@@ -295,7 +295,7 @@ public class CPHInline
     private const string UpdateCodeUrl      = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Code";
     private const string UpdateDownloadPath = @"";
 
-    private const string CurrentVersion = "1.0.5";
+    private const string CurrentVersion = "1.0.6";
 
     // ── Джерела фільтр-списків на GitHub (авто-синхронізація) ──
     private const string BlokRussianUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/BlokRussian";
@@ -1519,7 +1519,7 @@ private void AddReadOnlyLF(StackPanel p, string label, string tag, int height, s
 {
     AddFieldLabel(p, label.ToUpperInvariant());
     p.Children.Add(MakeReadOnlyField(tag, height));
-    AddHintBox(p, "🔒 " + hint + "\nПоле лише для перегляду — редагується автоматично з GitHub.");
+    AddHintBox(p, "🔒 " + hint + "\nРедагується автоматично з GitHub.");
 }
 
 
@@ -2070,19 +2070,19 @@ private void AddReadOnlyLF(StackPanel p, string label, string tag, int height, s
         AddLF(p, "Тільки медіа — без тексту в чат (|)", "Hello_onlyMediaUsers", multiline: true, height: 80);
         AddLF(p, "Без звуку (|)",                        "Hello_ignoreMediaUsers", multiline: true, height: 80);
 
-        AddSectionTitle(p, "💬", "Фільтри повідомлень", "Кирилиця / ігнор-слова / ігнор-символи синхронізуються автоматично з GitHub при старті стріму (вкладка «Про мене» → «Синхронізація фільтрів»)");
+        AddSectionTitle(p, "💬", "Фільтри повідомлень", "ЩОби довантажити нажміть вкладку «Про мене» далі → «Синхронізація фільтрів»)");
      AddReadOnlyLF(p, "Ігнорувати слова (|)",   "Hello_ignoreWords",   80,
-    "Якщо повідомлення містить ці слова — ігноруємо. Джерело: GitHub (IgnorSlova).");
+    "Джерело: GitHub");
 AddReadOnlyLF(p, "Ігнорувати символи (|)", "Hello_ignoreSymbols", 80,
-    "Джерело: GitHub (ignorSymvol).");
+    "Джерело: GitHub");
 AddReadOnlyLF(p, "Кириличні символи (будь-який = ігнор)", "Hello_russianLetters", 60,
-    "Якщо є хоча б одна з цих літер — ігноруємо повідомлення. Джерело: GitHub (BlokRussian).");
+    "Джерело: GitHub");
 
-     AddSectionTitle(p, "🌐", "Фільтри посилань", "GitHub-домени автоматично додаються до списку; можна дописувати свої вручну");
+     AddSectionTitle(p, "🌐", "Фільтри посилань", "GitHub-список  автоматично завантажиться; можна дописувати свої вручну");
 AddLF(p, "Заборонені домени (|)", "Hello_ignoreDomains", multiline: true, height: 80,
-    hint: "Можна редагувати вручну — GitHub-список (zablokovanidomen) автоматично домерджується сюди без видалення твоїх записів.");
+    hint: "Можна редагувати вручну — GitHub-список  автоматично завантажиться");
 AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowedDomains", multiline: true, height: 80,
-    hint: "Можна редагувати вручну — GitHub-список (dozvildomen) автоматично домерджується сюди без видалення твоїх записів.");
+    hint: "Можна редагувати вручну — GitHub-список  автоматично завантажиться");
     }
 
     private UIElement BuildQueueContent()
@@ -2437,7 +2437,7 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
                 "«Завантажити оновлення» копіює актуальний код у буфер обміну — встав його (Ctrl+V) у дію Streamer.bot.");
         }
 
-        AddSectionTitle(p, "🌐", "Синхронізація фільтрів", "Кирилиця / ігнор-слова / ігнор-символи — автопідтягування з GitHub");
+        AddSectionTitle(p, "🌐", "Синхронізація фільтрів", "Автопідтягування з GitHub");
         {
             string filterStatus = "";
             try { filterStatus = CPH.GetGlobalVar<string>("Hello_filterSyncStatus", true) ?? "Ще не синхронізовано"; } catch { filterStatus = "Ще не синхронізовано"; }

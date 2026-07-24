@@ -303,7 +303,7 @@ public class CPHInline
     private const string UpdateVersionUrl   = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Version";
     private const string UpdateCodeUrl      = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Code";
 
-    private const string CurrentVersion = "1.0.0";
+    private const string CurrentVersion = "1.0.1";
 
     private string HttpGetString(string url)
     {

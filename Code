@@ -101,10 +101,6 @@ public class CPHInline
         return false;
     }
 
-    // =====================================================================
-    //  LOGGING
-    // =====================================================================
-
     private void LogToFile(string message)
     {
         try
@@ -187,10 +183,6 @@ public class CPHInline
         }
     }
 
-    // =====================================================================
-    //  STREAM START / STOP
-    // =====================================================================
-
     private void OnStreamStarted()
     {
         try
@@ -228,10 +220,9 @@ public class CPHInline
             Thread.Sleep(300);
             streamJustStarted = false;
 
-            // Перевірка оновлення при старті стріму
+          
             ThreadPool.QueueUserWorkItem(_ => CheckForUpdate());
 
-            // Синхронізація фільтр-списків (кирилиця / ігнор-слова / ігнор-символи) з GitHub
             ThreadPool.QueueUserWorkItem(_ => SyncAllFilterLists());
         }
         catch (Exception ex)
@@ -304,7 +295,7 @@ public class CPHInline
     private const string UpdateCodeUrl      = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Code";
     private const string UpdateDownloadPath = @"";
 
-    private const string CurrentVersion = "1.0.4";
+    private const string CurrentVersion = "1.0.5";
 
     // ── Джерела фільтр-списків на GitHub (авто-синхронізація) ──
     private const string BlokRussianUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/BlokRussian";
@@ -466,12 +457,7 @@ public class CPHInline
         return false;
     }
 
-    // =====================================================================
-    //  СИНХРОНІЗАЦІЯ ФІЛЬТР-СПИСКІВ З GITHUB
-    //  (кирилиця / ігнор-слова / ігнор-символи)
-    // =====================================================================
-
-    private bool SyncRemoteList(string url, string globalVarKey, string logLabel)
+     private bool SyncRemoteList(string url, string globalVarKey, string logLabel)
     {
         try
         {
@@ -483,8 +469,7 @@ public class CPHInline
                 return false;
             }
 
-            // Нормалізація: прибираємо \r, зайві порожні рядки не рухаємо —
-            // формат списків (розділювач |) залишається як є в репозиторії.
+           
             string cleaned = remote.Replace("\r\n", "\n").Replace("\r", "\n").Trim();
 
             string current = "";
@@ -628,7 +613,7 @@ public class CPHInline
                 return true;
             }
 
-            // Ручний виклик перевірки оновлення (наприклад, окремою командою/дією з triggerId)
+           
             string updateTriggerId = GetArg("triggerId");
             if (updateTriggerId == "UPDATE-CHECK-TRIGGER-ID")
             {
@@ -636,7 +621,7 @@ public class CPHInline
                 return true;
             }
 
-            // Ручний виклик синхронізації фільтр-списків (наприклад, окремою дією з triggerId)
+           
             string syncTriggerId = GetArg("triggerId");
             if (syncTriggerId == "SYNC-FILTERS-TRIGGER-ID")
             {
@@ -975,10 +960,6 @@ public class CPHInline
         if (hasText)    CPH.ObsHideSource(scene, textSource);
     }
 
-    // =====================================================================
-    //  GREETED SET
-    // =====================================================================
-
     private HashSet<string> GetGreetedSet()
     {
         string str = GetSetting("greetedList");
@@ -1116,8 +1097,7 @@ public class CPHInline
         catch { return null; }
     }
 
-    // =====================================================================
-    //  GUI
+    //                           GUI
     // =====================================================================
 
     private void OpenSettingsWindow()
@@ -1340,8 +1320,7 @@ public class CPHInline
             rootGrid.Children.Add(footer);
             window.Content = rootGrid;
 
-            // Фікс витоку потоку: закриття вікна нативним хрестиком теж має
-            // зупиняти dispatcher, інакше потік + WPF-ресурси лишаються висіти назавжди.
+            
             window.Closed += (s, e) =>
             {
                 try { Dispatcher.CurrentDispatcher.InvokeShutdown(); } catch { }
@@ -1519,8 +1498,7 @@ private UIElement MakeReadOnlyField(string tag, int height = 70)
         HorizontalAlignment = HorizontalAlignment.Stretch
     };
 
-    // Періодичне автооновлення вмісту поля після синхронізації з GitHub,
-    // без потреби перевідкривати вікно налаштувань.
+   
     var refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
     refreshTimer.Tick += (s, e) =>
     {
@@ -2263,10 +2241,7 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
 
     private void BuildAboutContent(StackPanel p, Window ownerWindow)
     {
-        // Диспетчер вікна GUI — захоплюємо тут, поки ми ще у правильному UI-потоці.
-        // Dispatcher.CurrentDispatcher, викликаний із фонового ThreadPool-потоку,
-        // повертає диспетчер ТОГО фонового потоку, а не диспетчер вікна — саме
-        // це і спричиняло краш "different thread owns it" при натисканні кнопок.
+        
         Dispatcher uiDispatcher = ownerWindow.Dispatcher;
 
         AddSectionTitle(p, "🔄", "Оновлення", "Перевірка та завантаження нової версії скрипта");
@@ -2339,8 +2314,7 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
 
                         try
                         {
-                            // ВАЖЛИВО: викликаємо Invoke саме на диспетчері вікна (uiDispatcher),
-                            // а не на Dispatcher.CurrentDispatcher фонового потоку.
+                            
                             uiDispatcher.Invoke(() =>
                             {
                                 try
@@ -2362,8 +2336,6 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
                         }
                         catch (Exception exDisp)
                         {
-                            // Якщо вікно вже закрите/дисптчер завершив роботу — просто логуємо,
-                            // ніколи не даємо винятку з фонового потоку піти далі.
                             CPH.LogWarn($"[HELLO GUI] Check-update dispatcher error: {exDisp.Message}");
                             LogToFile($"[UPDATE CHECK DISPATCH ERROR] {exDisp.Message}");
                         }
@@ -2653,7 +2625,6 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
         p.Children.Add(card);
     }
 
-    // ── Збереження ──
     private void SaveAllSettings(Window window)
     {
         try
@@ -2683,7 +2654,7 @@ private void SaveTextBoxesInGrid(DependencyObject parent)
         var child = VisualTreeHelper.GetChild(parent, i);
         if (child is TextBox tb && tb.Tag is string tag && !string.IsNullOrEmpty(tag))
         {
-            if (GitHubManagedTags.Contains(tag)) continue; // не чіпаємо GitHub-поля
+            if (GitHubManagedTags.Contains(tag)) continue; 
 
             string val = tb.Text?.Trim() ?? "";
             if (val == tag) val = "";

@@ -16,6 +16,7 @@ using System.Windows.Data;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows.Input;
 
 public class CPHInline
 {
@@ -229,6 +230,9 @@ public class CPHInline
 
             // Перевірка оновлення при старті стріму
             ThreadPool.QueueUserWorkItem(_ => CheckForUpdate());
+
+            // Синхронізація фільтр-списків (кирилиця / ігнор-слова / ігнор-символи) з GitHub
+            ThreadPool.QueueUserWorkItem(_ => SyncAllFilterLists());
         }
         catch (Exception ex)
         {
@@ -300,7 +304,14 @@ public class CPHInline
     private const string UpdateCodeUrl      = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Code";
     private const string UpdateDownloadPath = @"";
 
-    private const string CurrentVersion = "1.0.3";
+    private const string CurrentVersion = "1.0.4";
+
+    // ── Джерела фільтр-списків на GitHub (авто-синхронізація) ──
+    private const string BlokRussianUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/BlokRussian";
+    private const string IgnorSlovaUrl  = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/IgnorSlova";
+    private const string IgnorSymvolUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/ignorSymvol";
+    private const string ZablokovaniDomenUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/zablokovanidomen";
+    private const string DozvilDomenUrl      = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/dozvildomen";
 
     private string HttpGetString(string url)
     {
@@ -455,6 +466,136 @@ public class CPHInline
         return false;
     }
 
+    // =====================================================================
+    //  СИНХРОНІЗАЦІЯ ФІЛЬТР-СПИСКІВ З GITHUB
+    //  (кирилиця / ігнор-слова / ігнор-символи)
+    // =====================================================================
+
+    private bool SyncRemoteList(string url, string globalVarKey, string logLabel)
+    {
+        try
+        {
+            string remote = HttpGetString(url);
+            if (string.IsNullOrWhiteSpace(remote))
+            {
+                LogToFile($"[SYNC {logLabel}] ❌ Не вдалось завантажити з репозиторію");
+                CPH.SetGlobalVar($"Hello_filterSync_{logLabel}", "Помилка завантаження", true);
+                return false;
+            }
+
+            // Нормалізація: прибираємо \r, зайві порожні рядки не рухаємо —
+            // формат списків (розділювач |) залишається як є в репозиторії.
+            string cleaned = remote.Replace("\r\n", "\n").Replace("\r", "\n").Trim();
+
+            string current = "";
+            try { current = CPH.GetGlobalVar<string>(globalVarKey, true) ?? ""; } catch { }
+
+            if (!string.Equals(current.Trim(), cleaned, StringComparison.Ordinal))
+            {
+                CPH.SetGlobalVar(globalVarKey, cleaned, true);
+                LogToFile($"[SYNC {logLabel}] ✅ Оновлено ({cleaned.Length} символів)");
+                CPH.SetGlobalVar($"Hello_filterSync_{logLabel}", "Оновлено", true);
+            }
+            else
+            {
+                LogToFile($"[SYNC {logLabel}] ✓ Без змін");
+                CPH.SetGlobalVar($"Hello_filterSync_{logLabel}", "Без змін", true);
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogToFile($"[SYNC {logLabel} ERROR] {ex.Message}");
+            CPH.LogError($"[HELLO SYNC {logLabel}] {ex.Message}");
+            CPH.SetGlobalVar($"Hello_filterSync_{logLabel}", "Помилка", true);
+            return false;
+        }
+    }
+
+    private bool SyncRemoteListMerge(string url, string globalVarKey, string logLabel)
+    {
+        try
+        {
+            string remote = HttpGetString(url);
+            if (string.IsNullOrWhiteSpace(remote))
+            {
+                LogToFile($"[SYNC {logLabel}] ❌ Не вдалось завантажити з репозиторію");
+                CPH.SetGlobalVar($"Hello_filterSync_{logLabel}", "Помилка завантаження", true);
+                return false;
+            }
+
+            var remoteItems = remote.Replace("\r\n", "\n").Replace("\r", "\n")
+                .Split(new[] { '\n', '|' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => s.Trim())
+                .Where(s => s.Length > 0)
+                .ToList();
+
+            string current = "";
+            try { current = CPH.GetGlobalVar<string>(globalVarKey, true) ?? ""; } catch { }
+
+            var currentItems = (string.IsNullOrWhiteSpace(current) || current == ClearedMarker)
+                ? new List<string>()
+                : current.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(s => s.Trim())
+                    .Where(s => s.Length > 0)
+                    .ToList();
+
+            var merged = new List<string>(currentItems);
+            int added = 0;
+            foreach (var item in remoteItems)
+            {
+                if (!merged.Any(x => x.Equals(item, StringComparison.OrdinalIgnoreCase)))
+                {
+                    merged.Add(item);
+                    added++;
+                }
+            }
+
+            string mergedStr = merged.Count == 0 ? "" : string.Join("|", merged);
+
+            if (added > 0 || !string.Equals(current.Trim(), mergedStr, StringComparison.Ordinal))
+            {
+                CPH.SetGlobalVar(globalVarKey, mergedStr, true);
+                LogToFile($"[SYNC {logLabel}] ✅ Додано {added} нових записів з GitHub (всього: {merged.Count})");
+                CPH.SetGlobalVar($"Hello_filterSync_{logLabel}", $"Додано {added} нових", true);
+            }
+            else
+            {
+                LogToFile($"[SYNC {logLabel}] ✓ Без змін");
+                CPH.SetGlobalVar($"Hello_filterSync_{logLabel}", "Без змін", true);
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogToFile($"[SYNC {logLabel} ERROR] {ex.Message}");
+            CPH.LogError($"[HELLO SYNC {logLabel}] {ex.Message}");
+            CPH.SetGlobalVar($"Hello_filterSync_{logLabel}", "Помилка", true);
+            return false;
+        }
+    }
+
+   private void SyncAllFilterLists()
+{
+    LogToFile("[SYNC] 🔄 Синхронізація фільтр-списків з GitHub...");
+
+    bool okRu  = SyncRemoteList(BlokRussianUrl,      "Hello_russianLetters",  "RussianLetters");
+    bool okIw  = SyncRemoteList(IgnorSlovaUrl,       "Hello_ignoreWords",     "IgnoreWords");
+    bool okIs  = SyncRemoteList(IgnorSymvolUrl,      "Hello_ignoreSymbols",   "IgnoreSymbols");
+    bool okBd  = SyncRemoteListMerge(ZablokovaniDomenUrl, "Hello_ignoreDomains",  "BlockedDomains");
+    bool okAd  = SyncRemoteListMerge(DozvilDomenUrl,      "Hello_allowedDomains", "AllowedDomains");
+
+    CPH.SetGlobalVar("Hello_lastFilterSyncTime", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), true);
+
+    bool allOk = okRu && okIw && okIs && okBd && okAd;
+    CPH.SetGlobalVar("Hello_filterSyncStatus", allOk ? "Синхронізовано успішно" : "Синхронізовано з помилками", true);
+
+    LogToFile($"[SYNC] {(allOk ? "✅ Синхронізацію завершено успішно" : "⚠ Синхронізацію завершено з помилками")}");
+    CPH.LogInfo($"[HELLO SYNC] {(allOk ? "Фільтр-списки синхронізовано з GitHub" : "Синхронізація фільтр-списків завершилась з помилками")}");
+}
+
 
     public bool Execute()
     {
@@ -492,6 +633,14 @@ public class CPHInline
             if (updateTriggerId == "UPDATE-CHECK-TRIGGER-ID")
             {
                 ThreadPool.QueueUserWorkItem(_ => CheckForUpdate(announceInChat: true));
+                return true;
+            }
+
+            // Ручний виклик синхронізації фільтр-списків (наприклад, окремою дією з triggerId)
+            string syncTriggerId = GetArg("triggerId");
+            if (syncTriggerId == "SYNC-FILTERS-TRIGGER-ID")
+            {
+                ThreadPool.QueueUserWorkItem(_ => SyncAllFilterLists());
                 return true;
             }
 
@@ -1332,6 +1481,70 @@ public class CPHInline
         });
     }
 
+private UIElement MakeReadOnlyField(string tag, int height = 70)
+{
+    string val = "";
+    try { val = CPH.GetGlobalVar<string>(tag, true) ?? ""; } catch { }
+
+    var tb = new TextBox
+    {
+        Tag        = tag,
+        Text       = val,
+        MinHeight  = height,
+        Padding    = new Thickness(12, 9, 12, 9),
+        Background = Brushes.Transparent,
+        Foreground = new SolidColorBrush(TextMuted),
+        BorderThickness = new Thickness(0),
+        FontSize   = 13, FontFamily = new FontFamily("Consolas"),
+        TextWrapping   = TextWrapping.Wrap,
+        AcceptsReturn  = true,
+        IsReadOnly     = true,
+        IsReadOnlyCaretVisible = false,
+        Focusable      = false,
+        Cursor         = Cursors.Arrow,
+        VerticalScrollBarVisibility   = ScrollBarVisibility.Auto,
+        HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        HorizontalAlignment      = HorizontalAlignment.Stretch,
+        VerticalContentAlignment = VerticalAlignment.Top
+    };
+
+    var border = new Border
+    {
+        Child           = tb,
+        CornerRadius    = new CornerRadius(8),
+        Background      = new SolidColorBrush(Color.FromRgb(14, 14, 20)),
+        BorderBrush     = new SolidColorBrush(Color.FromArgb(90, 90, 90, 90)),
+        BorderThickness = new Thickness(2),
+        Margin          = new Thickness(0, 0, 0, 4),
+        HorizontalAlignment = HorizontalAlignment.Stretch
+    };
+
+    // Періодичне автооновлення вмісту поля після синхронізації з GitHub,
+    // без потреби перевідкривати вікно налаштувань.
+    var refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+    refreshTimer.Tick += (s, e) =>
+    {
+        try
+        {
+            string latest = CPH.GetGlobalVar<string>(tag, true) ?? "";
+            if (latest != tb.Text) tb.Text = latest;
+        }
+        catch { }
+    };
+    tb.Unloaded += (s, e) => refreshTimer.Stop();
+    refreshTimer.Start();
+
+    return border;
+}
+
+private void AddReadOnlyLF(StackPanel p, string label, string tag, int height, string hint)
+{
+    AddFieldLabel(p, label.ToUpperInvariant());
+    p.Children.Add(MakeReadOnlyField(tag, height));
+    AddHintBox(p, "🔒 " + hint + "\nПоле лише для перегляду — редагується автоматично з GitHub.");
+}
+
+
     private UIElement MakeField(string tag, int height = 44, bool multiline = false)
     {
         string val = "";
@@ -1879,16 +2092,19 @@ public class CPHInline
         AddLF(p, "Тільки медіа — без тексту в чат (|)", "Hello_onlyMediaUsers", multiline: true, height: 80);
         AddLF(p, "Без звуку (|)",                        "Hello_ignoreMediaUsers", multiline: true, height: 80);
 
-        AddSectionTitle(p, "💬", "Фільтри повідомлень");
-        AddLF(p, "Ігнорувати слова (|)",   "Hello_ignoreWords",   multiline: true, height: 80,
-            hint: "Якщо повідомлення містить ці слова — ігноруємо");
-        AddLF(p, "Ігнорувати символи (|)", "Hello_ignoreSymbols", multiline: true, height: 80);
-        AddLF(p, "Кириличні символи (будь-який = ігнор)", "Hello_russianLetters",
-            hint: "Вставте кириличні літери — якщо є хоча б одна, ігноруємо повідомлення");
+        AddSectionTitle(p, "💬", "Фільтри повідомлень", "Кирилиця / ігнор-слова / ігнор-символи синхронізуються автоматично з GitHub при старті стріму (вкладка «Про мене» → «Синхронізація фільтрів»)");
+     AddReadOnlyLF(p, "Ігнорувати слова (|)",   "Hello_ignoreWords",   80,
+    "Якщо повідомлення містить ці слова — ігноруємо. Джерело: GitHub (IgnorSlova).");
+AddReadOnlyLF(p, "Ігнорувати символи (|)", "Hello_ignoreSymbols", 80,
+    "Джерело: GitHub (ignorSymvol).");
+AddReadOnlyLF(p, "Кириличні символи (будь-який = ігнор)", "Hello_russianLetters", 60,
+    "Якщо є хоча б одна з цих літер — ігноруємо повідомлення. Джерело: GitHub (BlokRussian).");
 
-        AddSectionTitle(p, "🌐", "Фільтри посилань");
-        AddLF(p, "Заборонені домени (|)",          "Hello_ignoreDomains",  multiline: true, height: 80);
-        AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowedDomains", multiline: true, height: 80);
+     AddSectionTitle(p, "🌐", "Фільтри посилань", "GitHub-домени автоматично додаються до списку; можна дописувати свої вручну");
+AddLF(p, "Заборонені домени (|)", "Hello_ignoreDomains", multiline: true, height: 80,
+    hint: "Можна редагувати вручну — GitHub-список (zablokovanidomen) автоматично домерджується сюди без видалення твоїх записів.");
+AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowedDomains", multiline: true, height: 80,
+    hint: "Можна редагувати вручну — GitHub-список (dozvildomen) автоматично домерджується сюди без видалення твоїх записів.");
     }
 
     private UIElement BuildQueueContent()
@@ -2249,6 +2465,116 @@ public class CPHInline
                 "«Завантажити оновлення» копіює актуальний код у буфер обміну — встав його (Ctrl+V) у дію Streamer.bot.");
         }
 
+        AddSectionTitle(p, "🌐", "Синхронізація фільтрів", "Кирилиця / ігнор-слова / ігнор-символи — автопідтягування з GitHub");
+        {
+            string filterStatus = "";
+            try { filterStatus = CPH.GetGlobalVar<string>("Hello_filterSyncStatus", true) ?? "Ще не синхронізовано"; } catch { filterStatus = "Ще не синхронізовано"; }
+            string lastFilterSync = "";
+            try { lastFilterSync = CPH.GetGlobalVar<string>("Hello_lastFilterSyncTime", true) ?? ""; } catch { }
+
+            var syncCard = new Border
+            {
+                Background      = new SolidColorBrush(Color.FromArgb(30, 150, 70, 255)),
+                BorderBrush     = new SolidColorBrush(BorderNormal),
+                BorderThickness = new Thickness(2),
+                CornerRadius    = new CornerRadius(8),
+                Padding         = new Thickness(16, 14, 16, 14),
+                Margin          = new Thickness(0, 0, 0, 20)
+            };
+            var syncInner = new StackPanel();
+
+            var syncStatusText = new TextBlock
+            {
+                Text         = $"Статус: {filterStatus}",
+                FontSize     = 12,
+                Foreground   = new SolidColorBrush(TextMuted),
+                Margin       = new Thickness(0, 0, 0, 4),
+                TextWrapping = TextWrapping.Wrap
+            };
+            syncInner.Children.Add(syncStatusText);
+
+            if (!string.IsNullOrEmpty(lastFilterSync))
+            {
+                syncInner.Children.Add(new TextBlock
+                {
+                    Text       = $"Остання синхронізація: {lastFilterSync}",
+                    FontSize   = 10,
+                    Foreground = new SolidColorBrush(TextMuted),
+                    Margin     = new Thickness(0, 0, 0, 10)
+                });
+            }
+
+            var syncBtn = MakeActionBtn("🔄  Синхронізувати фільтри", AccentBlue);
+            syncBtn.Click += (s, e) =>
+            {
+                try
+                {
+                    syncBtn.Content   = "⏳  Синхронізація...";
+                    syncBtn.IsEnabled = false;
+                    ThreadPool.QueueUserWorkItem(_ =>
+                    {
+                        try
+                        {
+                            SyncAllFilterLists();
+                        }
+                        catch (Exception exBg)
+                        {
+                            LogToFile($"[SYNC BG ERROR] {exBg.Message}");
+                        }
+
+                        try
+                        {
+                            uiDispatcher.Invoke(() =>
+                            {
+                                try
+                                {
+                                    string newStatus = "";
+                                    string newSync   = "";
+                                    try { newStatus = CPH.GetGlobalVar<string>("Hello_filterSyncStatus",  true) ?? ""; } catch { }
+                                    try { newSync   = CPH.GetGlobalVar<string>("Hello_lastFilterSyncTime", true) ?? ""; } catch { }
+                                    syncStatusText.Text = $"Статус: {newStatus}" + (!string.IsNullOrEmpty(newSync) ? $"  (остання синхронізація: {newSync})" : "");
+                                    syncBtn.Content   = "✅  Синхронізовано!";
+                                    syncBtn.IsEnabled = true;
+
+                                    var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2000) };
+                                    timer.Tick += (ts, te) => { timer.Stop(); syncBtn.Content = "🔄  Синхронізувати фільтри"; };
+                                    timer.Start();
+                                }
+                                catch (Exception exUi)
+                                {
+                                    CPH.LogWarn($"[HELLO GUI] Sync-filters UI update error: {exUi.Message}");
+                                    LogToFile($"[SYNC UI ERROR] {exUi.Message}");
+                                }
+                            });
+                        }
+                        catch (Exception exDisp)
+                        {
+                            CPH.LogWarn($"[HELLO GUI] Sync-filters dispatcher error: {exDisp.Message}");
+                            LogToFile($"[SYNC DISPATCH ERROR] {exDisp.Message}");
+                        }
+                    });
+                }
+                catch (Exception exClick)
+                {
+                    CPH.LogWarn($"[HELLO GUI] Sync-filters click error: {exClick.Message}");
+                    LogToFile($"[SYNC CLICK ERROR] {exClick.Message}");
+                    syncBtn.Content   = "🔄  Синхронізувати фільтри";
+                    syncBtn.IsEnabled = true;
+                }
+            };
+            syncInner.Children.Add(syncBtn);
+
+            syncCard.Child = syncInner;
+            p.Children.Add(syncCard);
+
+            AddHintBox(p,
+                "Автоматично запускається при кожному старті стріму — підтягує три списки з GitHub:\n" +
+                "• Кириличні символи (BlokRussian) → Hello_russianLetters\n" +
+                "• Ігнор-слова (IgnorSlova) → Hello_ignoreWords\n" +
+                "• Ігнор-символи (ignorSymvol) → Hello_ignoreSymbols\n" +
+                "Ці списки одразу застосовуються у фільтрах чату. Кнопка вище — для ручної синхронізації без перезапуску стріму.");
+        }
+
         AddSectionTitle(p, "❤", "Про скрипт");
         var card = new Border
         {
@@ -2343,24 +2669,30 @@ public class CPHInline
         }
     }
 
-    private void SaveTextBoxesInGrid(DependencyObject parent)
+private static readonly HashSet<string> GitHubManagedTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+{
+    "Hello_ignoreWords", "Hello_ignoreSymbols", "Hello_russianLetters"
+};
+
+private void SaveTextBoxesInGrid(DependencyObject parent)
+{
+    if (parent == null) return;
+    int n = VisualTreeHelper.GetChildrenCount(parent);
+    for (int i = 0; i < n; i++)
     {
-        if (parent == null) return;
-        int n = VisualTreeHelper.GetChildrenCount(parent);
-        for (int i = 0; i < n; i++)
+        var child = VisualTreeHelper.GetChild(parent, i);
+        if (child is TextBox tb && tb.Tag is string tag && !string.IsNullOrEmpty(tag))
         {
-            var child = VisualTreeHelper.GetChild(parent, i);
-            if (child is TextBox tb && tb.Tag is string tag && !string.IsNullOrEmpty(tag))
-            {
-              
-                string val = tb.Text?.Trim() ?? "";
-                if (val == tag) val = "";
-                CPH.SetGlobalVar(tag, val, true);
-            }
-            else
-            {
-                SaveTextBoxesInGrid(child);
-            }
+            if (GitHubManagedTags.Contains(tag)) continue; // не чіпаємо GitHub-поля
+
+            string val = tb.Text?.Trim() ?? "";
+            if (val == tag) val = "";
+            CPH.SetGlobalVar(tag, val, true);
+        }
+        else
+        {
+            SaveTextBoxesInGrid(child);
         }
     }
+}
 }

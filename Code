@@ -226,6 +226,9 @@ public class CPHInline
 
             Thread.Sleep(300);
             streamJustStarted = false;
+
+            // Перевірка оновлення при старті стріму
+            ThreadPool.QueueUserWorkItem(_ => CheckForUpdate());
         }
         catch (Exception ex)
         {
@@ -294,6 +297,213 @@ public class CPHInline
     }
 
     // =====================================================================
+    //  АВТООНОВЛЕННЯ (перевірка версії + завантаження коду з GitHub)
+    // =====================================================================
+
+    private const string UpdateVersionUrl   = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Version";
+    private const string UpdateCodeUrl      = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Code";
+    private const string UpdateDownloadPath = @"D:\ProgramFiles\Program\obs\stremerbot\Hello_NewVersion.cs";
+
+    // ⚠️ Онови цю константу на поточну версію скрипта при кожному релізі,
+    // і постав таке саме значення у файл Version в репозиторії, коли випускаєш новий реліз.
+    private const string CurrentVersion = "1.0.1";
+
+    private string HttpGetString(string url)
+    {
+        try
+        {
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            using (var client = new WebClient())
+            {
+                client.Headers.Add("User-Agent", "StreamerBot-Hello-Updater");
+                client.Encoding = Encoding.UTF8;
+                // Анти-кеш, щоб raw.githubusercontent.com не віддавав старий кеш
+                string sep = url.Contains("?") ? "&" : "?";
+                string bustedUrl = url + sep + "cachebust=" + DateTime.UtcNow.Ticks;
+                return client.DownloadString(bustedUrl);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogToFile($"[UPDATE HTTP ERROR] {url} | {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Перевіряє версію в репозиторії й порівнює з поточною версією скрипта.
+    /// Якщо є новіша — пише повідомлення в чат (якщо announceInChat = true) і в лог,
+    /// та зберігає прапорці/значення у глобальні змінні для GUI.
+    /// </summary>
+    private bool CheckForUpdate(bool announceInChat = false)
+    {
+        try
+        {
+            LogToFile("[UPDATE] 🔍 Перевірка оновлень...");
+            string remoteRaw = HttpGetString(UpdateVersionUrl);
+            if (string.IsNullOrWhiteSpace(remoteRaw))
+            {
+                LogToFile("[UPDATE] ❌ Не вдалось отримати Version з репозиторію");
+                CPH.SetGlobalVar("Hello_updateStatus", "Помилка перевірки", true);
+                return false;
+            }
+
+            string remoteVersion = remoteRaw.Trim();
+            CPH.SetGlobalVar("Hello_remoteVersion",  remoteVersion, true);
+            CPH.SetGlobalVar("Hello_lastCheckTime",  DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), true);
+
+            bool isNewer = IsVersionNewer(remoteVersion, CurrentVersion);
+            CPH.SetGlobalVar("Hello_updateAvailable", isNewer ? "true" : "false", true);
+
+            if (isNewer)
+            {
+                string msg = $"⚡ Доступне оновлення скрипта Hello: {CurrentVersion} → {remoteVersion}. Онови код через Streamer.bot (Import Code) або кнопку «Завантажити оновлення» у вкладці «Про мене».";
+                LogToFile($"[UPDATE] 🔔 Знайдено нову версію: {remoteVersion} (поточна: {CurrentVersion})");
+                CPH.SetGlobalVar("Hello_updateStatus", $"Доступна нова версія: {remoteVersion}", true);
+                CPH.LogWarn($"[HELLO UPDATE] Доступна нова версія {remoteVersion} (поточна {CurrentVersion})");
+
+                if (announceInChat)
+                {
+                    try { CPH.SendMessage(msg, true); }
+                    catch (Exception ex) { LogToFile($"[UPDATE CHAT ERROR] {ex.Message}"); }
+                }
+            }
+            else
+            {
+                LogToFile($"[UPDATE] ✅ Версія актуальна ({CurrentVersion})");
+                CPH.SetGlobalVar("Hello_updateStatus", "Версія актуальна", true);
+            }
+
+            return isNewer;
+        }
+        catch (Exception ex)
+        {
+            LogToFile($"[UPDATE ERROR] {ex.Message}");
+            CPH.LogError($"[HELLO UPDATE] {ex.Message}");
+            CPH.SetGlobalVar("Hello_updateStatus", "Помилка перевірки", true);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Порівнює дві версії у форматі "1.2.3". Повертає true, якщо remote новіша за local.
+    /// Якщо формат не парситься як версія — порівнює як прості рядки (remote != local).
+    /// </summary>
+    private bool IsVersionNewer(string remote, string local)
+    {
+        try
+        {
+            Version rv, lv;
+            string remoteNorm = NormalizeVersionString(remote);
+            string localNorm  = NormalizeVersionString(local);
+
+            if (Version.TryParse(remoteNorm, out rv) && Version.TryParse(localNorm, out lv))
+                return rv > lv;
+        }
+        catch { }
+
+        // fallback: прості рядки не рівні => вважаємо що є "оновлення"
+        return !string.Equals(remote?.Trim(), local?.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string NormalizeVersionString(string v)
+    {
+        if (string.IsNullOrWhiteSpace(v)) return "0.0.0";
+        v = v.Trim().TrimStart('v', 'V');
+        // Version.Parse не любить одиночні числа типу "5" — доповнюємо до "5.0"
+        int dots = v.Count(c => c == '.');
+        if (dots == 0) v += ".0";
+        return v;
+    }
+
+    /// <summary>
+    /// Завантажує актуальний код (файл Code) з репозиторію, зберігає локально
+    /// у файл UpdateDownloadPath і копіює його в буфер обміну, щоб користувачу
+    /// залишилось лише відкрити дію Streamer.bot і натиснути Ctrl+V → Compile → Save.
+    /// Повністю автоматичне (без жодної ручної дії) оновлення коду дії Streamer.bot
+    /// зсередини самого скрипта неможливе: Streamer.bot не надає публічного CPH-методу
+    /// для перезапису C#-коду сабекшена, а скомпільований код живе в пам'яті процесу —
+    /// тому фінальний крок (вставити + Compile + Save) користувач має виконати сам.
+    /// </summary>
+    private bool DownloadLatestCode(out string savedPath)
+    {
+        savedPath = null;
+        try
+        {
+            LogToFile("[UPDATE] ⬇ Завантаження актуального коду...");
+            string code = HttpGetString(UpdateCodeUrl);
+            if (string.IsNullOrWhiteSpace(code))
+            {
+                LogToFile("[UPDATE] ❌ Не вдалось завантажити Code з репозиторію");
+                CPH.SetGlobalVar("Hello_updateStatus", "Помилка завантаження коду", true);
+                return false;
+            }
+
+            string dir = Path.GetDirectoryName(UpdateDownloadPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+
+            File.WriteAllText(UpdateDownloadPath, code, Encoding.UTF8);
+            savedPath = UpdateDownloadPath;
+
+            bool clipboardOk = CopyToClipboardSafe(code);
+
+            LogToFile($"[UPDATE] ✅ Код збережено: {UpdateDownloadPath} | Буфер обміну: {(clipboardOk ? "OK" : "помилка")}");
+            CPH.LogInfo($"[HELLO UPDATE] Новий код збережено у {UpdateDownloadPath}{(clipboardOk ? " і скопійовано в буфер обміну" : "")}. Встав його в дію Streamer.bot (Ctrl+V) → Compile → Save.");
+            CPH.SetGlobalVar("Hello_updateStatus", clipboardOk
+                ? "Код скопійовано в буфер обміну — встав (Ctrl+V) у дію та натисни Compile → Save"
+                : "Код завантажено (буфер обміну недоступний) — відкрий файл і встав вручну",
+                true);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogToFile($"[UPDATE DOWNLOAD ERROR] {ex.Message}");
+            CPH.LogError($"[HELLO UPDATE] {ex.Message}");
+            CPH.SetGlobalVar("Hello_updateStatus", "Помилка завантаження коду", true);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Копіює текст у системний буфер обміну. Windows Clipboard API вимагає STA-потік,
+    /// тому створюємо окремий короткоживучий STA-потік лише для цієї операції.
+    /// Повертає true, якщо копіювання підтверджено успішним.
+    /// </summary>
+    private bool CopyToClipboardSafe(string text)
+    {
+        bool success = false;
+        try
+        {
+            var t = new Thread(() =>
+            {
+                for (int attempt = 0; attempt < 3 && !success; attempt++)
+                {
+                    try
+                    {
+                        Clipboard.SetText(text);
+                        success = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogToFile($"[CLIPBOARD ATTEMPT {attempt + 1}] {ex.Message}");
+                        Thread.Sleep(120);
+                    }
+                }
+            });
+            t.SetApartmentState(ApartmentState.STA);
+            t.IsBackground = true;
+            t.Start();
+            t.Join(3000);
+        }
+        catch (Exception ex)
+        {
+            LogToFile($"[CLIPBOARD ERROR] {ex.Message}");
+        }
+        return success;
+    }
+
+    // =====================================================================
     //  EXECUTE
     // =====================================================================
 
@@ -325,6 +535,14 @@ public class CPHInline
             {
                 LogToFile("[EXECUTE] → Detected STREAM STOP event");
                 OnStreamStopped();
+                return true;
+            }
+
+            // Ручний виклик перевірки оновлення (наприклад, окремою командою/дією з triggerId)
+            string updateTriggerId = GetArg("triggerId");
+            if (updateTriggerId == "UPDATE-CHECK-TRIGGER-ID")
+            {
+                ThreadPool.QueueUserWorkItem(_ => CheckForUpdate(announceInChat: true));
                 return true;
             }
 
@@ -1893,6 +2111,119 @@ public class CPHInline
 
     private void BuildAboutContent(StackPanel p)
     {
+        AddSectionTitle(p, "🔄", "Оновлення", "Перевірка та завантаження нової версії скрипта");
+        {
+            string status = "";
+            try { status = CPH.GetGlobalVar<string>("Hello_updateStatus", true) ?? "Ще не перевірялось"; } catch { status = "Ще не перевірялось"; }
+            string remoteV = "";
+            try { remoteV = CPH.GetGlobalVar<string>("Hello_remoteVersion", true) ?? ""; } catch { }
+            string lastCheck = "";
+            try { lastCheck = CPH.GetGlobalVar<string>("Hello_lastCheckTime", true) ?? ""; } catch { }
+
+            var updCard = new Border
+            {
+                Background      = new SolidColorBrush(Color.FromArgb(30, 70, 160, 255)),
+                BorderBrush     = new SolidColorBrush(BorderNormal),
+                BorderThickness = new Thickness(2),
+                CornerRadius    = new CornerRadius(8),
+                Padding         = new Thickness(16, 14, 16, 14),
+                Margin          = new Thickness(0, 0, 0, 20)
+            };
+            var updInner = new StackPanel();
+
+            var verRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
+            verRow.Children.Add(new TextBlock { Text = "Поточна версія: ", FontSize = 12, Foreground = new SolidColorBrush(TextMuted) });
+            verRow.Children.Add(new TextBlock { Text = CurrentVersion, FontSize = 12, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(TextPrimary) });
+            updInner.Children.Add(verRow);
+
+            var statusText = new TextBlock
+            {
+                Text       = $"Статус: {status}" + (!string.IsNullOrEmpty(remoteV) ? $"  (репозиторій: {remoteV})" : ""),
+                FontSize   = 12,
+                Foreground = new SolidColorBrush(TextMuted),
+                Margin     = new Thickness(0, 0, 0, 4),
+                TextWrapping = TextWrapping.Wrap
+            };
+            updInner.Children.Add(statusText);
+
+            if (!string.IsNullOrEmpty(lastCheck))
+            {
+                updInner.Children.Add(new TextBlock
+                {
+                    Text       = $"Остання перевірка: {lastCheck}",
+                    FontSize   = 10,
+                    Foreground = new SolidColorBrush(TextMuted),
+                    Margin     = new Thickness(0, 0, 0, 10)
+                });
+            }
+
+            var updBtnRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
+            var checkBtn  = MakeActionBtn("🔍  Перевірити оновлення", AccentBlue);
+            var dlBtn     = MakeActionBtn("⬇  Завантажити оновлення", AccentGreen);
+
+            checkBtn.Click += (s, e) =>
+            {
+                checkBtn.Content   = "⏳  Перевірка...";
+                checkBtn.IsEnabled = false;
+                ThreadPool.QueueUserWorkItem(_ =>
+                {
+                    bool hasUpdate = CheckForUpdate(announceInChat: false);
+                    Dispatcher.CurrentDispatcher.Invoke(() =>
+                    {
+                        string newStatus  = "";
+                        string newRemoteV = "";
+                        try { newStatus  = CPH.GetGlobalVar<string>("Hello_updateStatus",  true) ?? ""; } catch { }
+                        try { newRemoteV = CPH.GetGlobalVar<string>("Hello_remoteVersion", true) ?? ""; } catch { }
+                        statusText.Text = $"Статус: {newStatus}" + (!string.IsNullOrEmpty(newRemoteV) ? $"  (репозиторій: {newRemoteV})" : "");
+                        checkBtn.Content   = "🔍  Перевірити оновлення";
+                        checkBtn.IsEnabled = true;
+                    });
+                });
+            };
+
+            dlBtn.Click += (s, e) =>
+            {
+                dlBtn.Content   = "⏳  Завантаження...";
+                dlBtn.IsEnabled = false;
+                ThreadPool.QueueUserWorkItem(_ =>
+                {
+                    bool ok = DownloadLatestCode(out string savedPath);
+                    Dispatcher.CurrentDispatcher.Invoke(() =>
+                    {
+                        dlBtn.Content   = ok ? "✅  Завантажено" : "❌  Помилка";
+                        dlBtn.IsEnabled = true;
+                        if (ok)
+                        {
+                            string curStatus = "";
+                            try { curStatus = CPH.GetGlobalVar<string>("Hello_updateStatus", true) ?? ""; } catch { }
+                            statusText.Text = $"{curStatus}\nФайл: {savedPath}";
+                            try
+                            {
+                                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{savedPath}\"") { UseShellExecute = true });
+                            }
+                            catch { }
+                        }
+                        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2500) };
+                        timer.Tick += (ts, te) => { timer.Stop(); dlBtn.Content = "⬇  Завантажити оновлення"; };
+                        timer.Start();
+                    });
+                });
+            };
+
+            updBtnRow.Children.Add(checkBtn);
+            updBtnRow.Children.Add(dlBtn);
+            updInner.Children.Add(updBtnRow);
+
+            updCard.Child = updInner;
+            p.Children.Add(updCard);
+
+            AddHintBox(p,
+                "Перевірка звіряє файл Version у репозиторії з версією, вшитою в цей скрипт.\n" +
+                "«Завантажити оновлення» зберігає актуальний код (файл Code) локально і одразу копіює його в буфер обміну.\n" +
+                "Streamer.bot не дає можливості дії самій себе перезаписати «в один клік» — це обмеження самої програми, " +
+                "тому останній крок робиш ти: відкрий цю дію → в полі коду встав (Ctrl+V) → Compile → Save.");
+        }
+
         AddSectionTitle(p, "❤", "Про скрипт");
         var card = new Border
         {

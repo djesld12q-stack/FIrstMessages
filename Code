@@ -297,14 +297,13 @@ public class CPHInline
     }
 
     // =====================================================================
-    //  АВТООНОВЛЕННЯ (перевірка версії + завантаження коду з GitHub)
+    //  АВТООНОВЛЕННЯ (перевірка версії + копіювання коду з GitHub у буфер обміну)
     // =====================================================================
 
     private const string UpdateVersionUrl   = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Version";
     private const string UpdateCodeUrl      = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Code";
-    private const string UpdateDownloadPath = @"D:\ProgramFiles\Program\obs\stremerbot\Hello_NewVersion.cs";
 
-    private const string CurrentVersion = "1.0.1";
+    private const string CurrentVersion = "1.0.0";
 
     private string HttpGetString(string url)
     {
@@ -355,7 +354,7 @@ public class CPHInline
 
             if (isNewer)
             {
-                string msg = $"⚡ Доступне оновлення скрипта Hello: {CurrentVersion} → {remoteVersion}. Онови код через Streamer.bot (Import Code) або кнопку «Завантажити оновлення» у вкладці «Про мене».";
+                string msg = $"⚡ Доступне оновлення скрипта Hello: {CurrentVersion} → {remoteVersion}. Онови код через Streamer.bot (Import Code) або кнопку «Скопіювати оновлення» у вкладці «Про мене».";
                 LogToFile($"[UPDATE] 🔔 Знайдено нову версію: {remoteVersion} (поточна: {CurrentVersion})");
                 CPH.SetGlobalVar("Hello_updateStatus", $"Доступна нова версія: {remoteVersion}", true);
                 CPH.LogWarn($"[HELLO UPDATE] Доступна нова версія {remoteVersion} (поточна {CurrentVersion})");
@@ -415,33 +414,25 @@ public class CPHInline
     }
 
     /// <summary>
-    /// Завантажує актуальний код (файл Code) з репозиторію та зберігає локально
-    /// у файл UpdateDownloadPath, щоб можна було відкрити й вручну вставити в дію Streamer.bot.
+    /// Завантажує актуальний код (файл Code) з репозиторію і повертає його текстом,
+    /// щоб можна було одразу скопіювати в буфер обміну (без збереження на диск).
     /// </summary>
-    private bool DownloadLatestCode(out string savedPath)
+    private bool DownloadLatestCode(out string code)
     {
-        savedPath = null;
+        code = null;
         try
         {
             LogToFile("[UPDATE] ⬇ Завантаження актуального коду...");
-            string code = HttpGetString(UpdateCodeUrl);
-            if (string.IsNullOrWhiteSpace(code))
+            string remote = HttpGetString(UpdateCodeUrl);
+            if (string.IsNullOrWhiteSpace(remote))
             {
                 LogToFile("[UPDATE] ❌ Не вдалось завантажити Code з репозиторію");
                 CPH.SetGlobalVar("Hello_updateStatus", "Помилка завантаження коду", true);
                 return false;
             }
 
-            string dir = Path.GetDirectoryName(UpdateDownloadPath);
-            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
-
-            File.WriteAllText(UpdateDownloadPath, code, Encoding.UTF8);
-            savedPath = UpdateDownloadPath;
-
-            LogToFile($"[UPDATE] ✅ Код збережено: {UpdateDownloadPath}");
-            CPH.LogInfo($"[HELLO UPDATE] Новий код збережено у {UpdateDownloadPath}. Встав його в дію Streamer.bot вручну (Import Code не робить це автоматично).");
-            CPH.SetGlobalVar("Hello_updateStatus", "Код завантажено — встав вручну в дію", true);
+            code = remote;
+            LogToFile("[UPDATE] ✅ Код отримано з репозиторію");
             return true;
         }
         catch (Exception ex)
@@ -451,6 +442,28 @@ public class CPHInline
             CPH.SetGlobalVar("Hello_updateStatus", "Помилка завантаження коду", true);
             return false;
         }
+    }
+
+    /// <summary>
+    /// Копіює текст у буфер обміну. Буфер обміну Windows іноді тимчасово зайнятий
+    /// іншим процесом (антивірус, менеджер буфера тощо), тому робимо кілька спроб.
+    /// </summary>
+    private bool TryCopyToClipboard(string text)
+    {
+        for (int attempt = 0; attempt < 6; attempt++)
+        {
+            try
+            {
+                Clipboard.SetText(text, TextDataFormat.UnicodeText);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                LogToFile($"[CLIPBOARD] Спроба {attempt + 1}/6 не вдалась: {ex.Message}");
+                Thread.Sleep(120);
+            }
+        }
+        return false;
     }
 
     // =====================================================================
@@ -2067,7 +2080,7 @@ public class CPHInline
         // це і спричиняло краш "different thread owns it" при натисканні кнопок.
         Dispatcher uiDispatcher = ownerWindow.Dispatcher;
 
-        AddSectionTitle(p, "🔄", "Оновлення", "Перевірка та завантаження нової версії скрипта");
+        AddSectionTitle(p, "🔄", "Оновлення", "Перевірка та копіювання нової версії скрипта");
         {
             string status = "";
             try { status = CPH.GetGlobalVar<string>("Hello_updateStatus", true) ?? "Ще не перевірялось"; } catch { status = "Ще не перевірялось"; }
@@ -2115,7 +2128,7 @@ public class CPHInline
 
             var updBtnRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
             var checkBtn  = MakeActionBtn("🔍  Перевірити оновлення", AccentBlue);
-            var dlBtn     = MakeActionBtn("⬇  Завантажити оновлення", AccentGreen);
+            var dlBtn     = MakeActionBtn("📋  Скопіювати оновлення", AccentGreen);
 
             checkBtn.Click += (s, e) =>
             {
@@ -2184,11 +2197,11 @@ public class CPHInline
                     dlBtn.IsEnabled = false;
                     ThreadPool.QueueUserWorkItem(_ =>
                     {
-                        bool   ok        = false;
-                        string savedPath = null;
+                        bool   ok   = false;
+                        string code = null;
                         try
                         {
-                            ok = DownloadLatestCode(out savedPath);
+                            ok = DownloadLatestCode(out code);
                         }
                         catch (Exception exBg)
                         {
@@ -2201,19 +2214,23 @@ public class CPHInline
                             {
                                 try
                                 {
-                                    dlBtn.Content   = ok ? "✅  Завантажено" : "❌  Помилка";
+                                    bool copied = ok && !string.IsNullOrEmpty(code) && TryCopyToClipboard(code);
+
+                                    dlBtn.Content   = copied ? "✅  Скопійовано!" : "❌  Помилка";
                                     dlBtn.IsEnabled = true;
-                                    if (ok)
+
+                                    if (copied)
                                     {
-                                        statusText.Text = $"Код збережено: {savedPath}\nВідкрий файл і встав вміст у дію Streamer.bot (Import Code не робить це автоматично).";
-                                        try
-                                        {
-                                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{savedPath}\"") { UseShellExecute = true });
-                                        }
-                                        catch { }
+                                        statusText.Text = "Код скопійовано в буфер обміну — встав його (Ctrl+V) у дію Streamer.bot.";
+                                        CPH.SetGlobalVar("Hello_updateStatus", "Код скопійовано в буфер обміну", true);
                                     }
+                                    else
+                                    {
+                                        statusText.Text = "Не вдалось скопіювати код у буфер обміну. Спробуй ще раз.";
+                                    }
+
                                     var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2500) };
-                                    timer.Tick += (ts, te) => { timer.Stop(); dlBtn.Content = "⬇  Завантажити оновлення"; };
+                                    timer.Tick += (ts, te) => { timer.Stop(); dlBtn.Content = "📋  Скопіювати оновлення"; };
                                     timer.Start();
                                 }
                                 catch (Exception exUi)
@@ -2234,7 +2251,7 @@ public class CPHInline
                 {
                     CPH.LogWarn($"[HELLO GUI] Download-update click error: {exClick.Message}");
                     LogToFile($"[UPDATE DOWNLOAD CLICK ERROR] {exClick.Message}");
-                    dlBtn.Content   = "⬇  Завантажити оновлення";
+                    dlBtn.Content   = "📋  Скопіювати оновлення";
                     dlBtn.IsEnabled = true;
                 }
             };
@@ -2248,7 +2265,7 @@ public class CPHInline
 
             AddHintBox(p,
                 "Перевірка звіряє файл Version у репозиторії з версією, вшитою в цей скрипт.\n" +
-                "«Завантажити оновлення» зберігає актуальний код (файл Code) локально — його потрібно вручну вставити в дію Streamer.bot, автоматично замінити код дії неможливо.");
+                "«Скопіювати оновлення» копіює актуальний код (файл Code) у буфер обміну — просто встав його (Ctrl+V) у дію Streamer.bot.");
         }
 
         AddSectionTitle(p, "❤", "Про скрипт");

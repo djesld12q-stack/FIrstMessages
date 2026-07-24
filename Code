@@ -304,8 +304,6 @@ public class CPHInline
     private const string UpdateCodeUrl      = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Code";
     private const string UpdateDownloadPath = @"D:\ProgramFiles\Program\obs\stremerbot\Hello_NewVersion.cs";
 
-    // ⚠️ Онови цю константу на поточну версію скрипта при кожному релізі,
-    // і постав таке саме значення у файл Version в репозиторії, коли випускаєш новий реліз.
     private const string CurrentVersion = "1.0.1";
 
     private string HttpGetString(string url)
@@ -317,7 +315,7 @@ public class CPHInline
             {
                 client.Headers.Add("User-Agent", "StreamerBot-Hello-Updater");
                 client.Encoding = Encoding.UTF8;
-                // Анти-кеш, щоб raw.githubusercontent.com не віддавав старий кеш
+                
                 string sep = url.Contains("?") ? "&" : "?";
                 string bustedUrl = url + sep + "cachebust=" + DateTime.UtcNow.Ticks;
                 return client.DownloadString(bustedUrl);
@@ -417,13 +415,8 @@ public class CPHInline
     }
 
     /// <summary>
-    /// Завантажує актуальний код (файл Code) з репозиторію, зберігає локально
-    /// у файл UpdateDownloadPath і копіює його в буфер обміну, щоб користувачу
-    /// залишилось лише відкрити дію Streamer.bot і натиснути Ctrl+V → Compile → Save.
-    /// Повністю автоматичне (без жодної ручної дії) оновлення коду дії Streamer.bot
-    /// зсередини самого скрипта неможливе: Streamer.bot не надає публічного CPH-методу
-    /// для перезапису C#-коду сабекшена, а скомпільований код живе в пам'яті процесу —
-    /// тому фінальний крок (вставити + Compile + Save) користувач має виконати сам.
+    /// Завантажує актуальний код (файл Code) з репозиторію та зберігає локально
+    /// у файл UpdateDownloadPath, щоб можна було відкрити й вручну вставити в дію Streamer.bot.
     /// </summary>
     private bool DownloadLatestCode(out string savedPath)
     {
@@ -446,14 +439,9 @@ public class CPHInline
             File.WriteAllText(UpdateDownloadPath, code, Encoding.UTF8);
             savedPath = UpdateDownloadPath;
 
-            bool clipboardOk = CopyToClipboardSafe(code);
-
-            LogToFile($"[UPDATE] ✅ Код збережено: {UpdateDownloadPath} | Буфер обміну: {(clipboardOk ? "OK" : "помилка")}");
-            CPH.LogInfo($"[HELLO UPDATE] Новий код збережено у {UpdateDownloadPath}{(clipboardOk ? " і скопійовано в буфер обміну" : "")}. Встав його в дію Streamer.bot (Ctrl+V) → Compile → Save.");
-            CPH.SetGlobalVar("Hello_updateStatus", clipboardOk
-                ? "Код скопійовано в буфер обміну — встав (Ctrl+V) у дію та натисни Compile → Save"
-                : "Код завантажено (буфер обміну недоступний) — відкрий файл і встав вручну",
-                true);
+            LogToFile($"[UPDATE] ✅ Код збережено: {UpdateDownloadPath}");
+            CPH.LogInfo($"[HELLO UPDATE] Новий код збережено у {UpdateDownloadPath}. Встав його в дію Streamer.bot вручну (Import Code не робить це автоматично).");
+            CPH.SetGlobalVar("Hello_updateStatus", "Код завантажено — встав вручну в дію", true);
             return true;
         }
         catch (Exception ex)
@@ -463,44 +451,6 @@ public class CPHInline
             CPH.SetGlobalVar("Hello_updateStatus", "Помилка завантаження коду", true);
             return false;
         }
-    }
-
-    /// <summary>
-    /// Копіює текст у системний буфер обміну. Windows Clipboard API вимагає STA-потік,
-    /// тому створюємо окремий короткоживучий STA-потік лише для цієї операції.
-    /// Повертає true, якщо копіювання підтверджено успішним.
-    /// </summary>
-    private bool CopyToClipboardSafe(string text)
-    {
-        bool success = false;
-        try
-        {
-            var t = new Thread(() =>
-            {
-                for (int attempt = 0; attempt < 3 && !success; attempt++)
-                {
-                    try
-                    {
-                        Clipboard.SetText(text);
-                        success = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        LogToFile($"[CLIPBOARD ATTEMPT {attempt + 1}] {ex.Message}");
-                        Thread.Sleep(120);
-                    }
-                }
-            });
-            t.SetApartmentState(ApartmentState.STA);
-            t.IsBackground = true;
-            t.Start();
-            t.Join(3000);
-        }
-        catch (Exception ex)
-        {
-            LogToFile($"[CLIPBOARD ERROR] {ex.Message}");
-        }
-        return success;
     }
 
     // =====================================================================
@@ -1165,7 +1115,7 @@ public class CPHInline
             tabControl.Items.Add(CreateScrollTab("🎬  Медіа",      scrollStyle, BuildMediaContent));
             tabControl.Items.Add(CreateScrollTab("🔍  Фільтри",    scrollStyle, BuildFiltersContent));
             tabControl.Items.Add(new TabItem { Header = "📋  Черга", Content = BuildQueueContent() });
-            tabControl.Items.Add(CreateScrollTab("❤  Про мене",   scrollStyle, BuildAboutContent));
+            tabControl.Items.Add(CreateScrollTab("❤  Про мене",   scrollStyle, p => BuildAboutContent(p, window)));
 
             Grid.SetRow(tabControl, 1);
 
@@ -2109,8 +2059,14 @@ public class CPHInline
         return new ScrollViewer { Content = outer, Style = queueScroll };
     }
 
-    private void BuildAboutContent(StackPanel p)
+    private void BuildAboutContent(StackPanel p, Window ownerWindow)
     {
+        // Диспетчер вікна GUI — захоплюємо тут, поки ми ще у правильному UI-потоці.
+        // Dispatcher.CurrentDispatcher, викликаний із фонового ThreadPool-потоку,
+        // повертає диспетчер ТОГО фонового потоку, а не диспетчер вікна — саме
+        // це і спричиняло краш "different thread owns it" при натисканні кнопок.
+        Dispatcher uiDispatcher = ownerWindow.Dispatcher;
+
         AddSectionTitle(p, "🔄", "Оновлення", "Перевірка та завантаження нової версії скрипта");
         {
             string status = "";
@@ -2163,51 +2119,124 @@ public class CPHInline
 
             checkBtn.Click += (s, e) =>
             {
-                checkBtn.Content   = "⏳  Перевірка...";
-                checkBtn.IsEnabled = false;
-                ThreadPool.QueueUserWorkItem(_ =>
+                try
                 {
-                    bool hasUpdate = CheckForUpdate(announceInChat: false);
-                    Dispatcher.CurrentDispatcher.Invoke(() =>
+                    checkBtn.Content   = "⏳  Перевірка...";
+                    checkBtn.IsEnabled = false;
+                    ThreadPool.QueueUserWorkItem(_ =>
                     {
-                        string newStatus  = "";
-                        string newRemoteV = "";
-                        try { newStatus  = CPH.GetGlobalVar<string>("Hello_updateStatus",  true) ?? ""; } catch { }
-                        try { newRemoteV = CPH.GetGlobalVar<string>("Hello_remoteVersion", true) ?? ""; } catch { }
-                        statusText.Text = $"Статус: {newStatus}" + (!string.IsNullOrEmpty(newRemoteV) ? $"  (репозиторій: {newRemoteV})" : "");
-                        checkBtn.Content   = "🔍  Перевірити оновлення";
-                        checkBtn.IsEnabled = true;
+                        bool hasUpdate = false;
+                        try
+                        {
+                            hasUpdate = CheckForUpdate(announceInChat: false);
+                        }
+                        catch (Exception exBg)
+                        {
+                            LogToFile($"[UPDATE CHECK BG ERROR] {exBg.Message}");
+                        }
+
+                        try
+                        {
+                            // ВАЖЛИВО: викликаємо Invoke саме на диспетчері вікна (uiDispatcher),
+                            // а не на Dispatcher.CurrentDispatcher фонового потоку.
+                            uiDispatcher.Invoke(() =>
+                            {
+                                try
+                                {
+                                    string newStatus  = "";
+                                    string newRemoteV = "";
+                                    try { newStatus  = CPH.GetGlobalVar<string>("Hello_updateStatus",  true) ?? ""; } catch { }
+                                    try { newRemoteV = CPH.GetGlobalVar<string>("Hello_remoteVersion", true) ?? ""; } catch { }
+                                    statusText.Text = $"Статус: {newStatus}" + (!string.IsNullOrEmpty(newRemoteV) ? $"  (репозиторій: {newRemoteV})" : "");
+                                    checkBtn.Content   = "🔍  Перевірити оновлення";
+                                    checkBtn.IsEnabled = true;
+                                }
+                                catch (Exception exUi)
+                                {
+                                    CPH.LogWarn($"[HELLO GUI] Check-update UI update error: {exUi.Message}");
+                                    LogToFile($"[UPDATE CHECK UI ERROR] {exUi.Message}");
+                                }
+                            });
+                        }
+                        catch (Exception exDisp)
+                        {
+                            // Якщо вікно вже закрите/дисптчер завершив роботу — просто логуємо,
+                            // ніколи не даємо винятку з фонового потоку піти далі.
+                            CPH.LogWarn($"[HELLO GUI] Check-update dispatcher error: {exDisp.Message}");
+                            LogToFile($"[UPDATE CHECK DISPATCH ERROR] {exDisp.Message}");
+                        }
                     });
-                });
+                }
+                catch (Exception exClick)
+                {
+                    CPH.LogWarn($"[HELLO GUI] Check-update click error: {exClick.Message}");
+                    LogToFile($"[UPDATE CHECK CLICK ERROR] {exClick.Message}");
+                    checkBtn.Content   = "🔍  Перевірити оновлення";
+                    checkBtn.IsEnabled = true;
+                }
             };
 
             dlBtn.Click += (s, e) =>
             {
-                dlBtn.Content   = "⏳  Завантаження...";
-                dlBtn.IsEnabled = false;
-                ThreadPool.QueueUserWorkItem(_ =>
+                try
                 {
-                    bool ok = DownloadLatestCode(out string savedPath);
-                    Dispatcher.CurrentDispatcher.Invoke(() =>
+                    dlBtn.Content   = "⏳  Завантаження...";
+                    dlBtn.IsEnabled = false;
+                    ThreadPool.QueueUserWorkItem(_ =>
                     {
-                        dlBtn.Content   = ok ? "✅  Завантажено" : "❌  Помилка";
-                        dlBtn.IsEnabled = true;
-                        if (ok)
+                        bool   ok        = false;
+                        string savedPath = null;
+                        try
                         {
-                            string curStatus = "";
-                            try { curStatus = CPH.GetGlobalVar<string>("Hello_updateStatus", true) ?? ""; } catch { }
-                            statusText.Text = $"{curStatus}\nФайл: {savedPath}";
-                            try
-                            {
-                                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{savedPath}\"") { UseShellExecute = true });
-                            }
-                            catch { }
+                            ok = DownloadLatestCode(out savedPath);
                         }
-                        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2500) };
-                        timer.Tick += (ts, te) => { timer.Stop(); dlBtn.Content = "⬇  Завантажити оновлення"; };
-                        timer.Start();
+                        catch (Exception exBg)
+                        {
+                            LogToFile($"[UPDATE DOWNLOAD BG ERROR] {exBg.Message}");
+                        }
+
+                        try
+                        {
+                            uiDispatcher.Invoke(() =>
+                            {
+                                try
+                                {
+                                    dlBtn.Content   = ok ? "✅  Завантажено" : "❌  Помилка";
+                                    dlBtn.IsEnabled = true;
+                                    if (ok)
+                                    {
+                                        statusText.Text = $"Код збережено: {savedPath}\nВідкрий файл і встав вміст у дію Streamer.bot (Import Code не робить це автоматично).";
+                                        try
+                                        {
+                                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{savedPath}\"") { UseShellExecute = true });
+                                        }
+                                        catch { }
+                                    }
+                                    var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2500) };
+                                    timer.Tick += (ts, te) => { timer.Stop(); dlBtn.Content = "⬇  Завантажити оновлення"; };
+                                    timer.Start();
+                                }
+                                catch (Exception exUi)
+                                {
+                                    CPH.LogWarn($"[HELLO GUI] Download-update UI update error: {exUi.Message}");
+                                    LogToFile($"[UPDATE DOWNLOAD UI ERROR] {exUi.Message}");
+                                }
+                            });
+                        }
+                        catch (Exception exDisp)
+                        {
+                            CPH.LogWarn($"[HELLO GUI] Download-update dispatcher error: {exDisp.Message}");
+                            LogToFile($"[UPDATE DOWNLOAD DISPATCH ERROR] {exDisp.Message}");
+                        }
                     });
-                });
+                }
+                catch (Exception exClick)
+                {
+                    CPH.LogWarn($"[HELLO GUI] Download-update click error: {exClick.Message}");
+                    LogToFile($"[UPDATE DOWNLOAD CLICK ERROR] {exClick.Message}");
+                    dlBtn.Content   = "⬇  Завантажити оновлення";
+                    dlBtn.IsEnabled = true;
+                }
             };
 
             updBtnRow.Children.Add(checkBtn);
@@ -2219,9 +2248,7 @@ public class CPHInline
 
             AddHintBox(p,
                 "Перевірка звіряє файл Version у репозиторії з версією, вшитою в цей скрипт.\n" +
-                "«Завантажити оновлення» зберігає актуальний код (файл Code) локально і одразу копіює його в буфер обміну.\n" +
-                "Streamer.bot не дає можливості дії самій себе перезаписати «в один клік» — це обмеження самої програми, " +
-                "тому останній крок робиш ти: відкрий цю дію → в полі коду встав (Ctrl+V) → Compile → Save.");
+                "«Завантажити оновлення» зберігає актуальний код (файл Code) локально — його потрібно вручну вставити в дію Streamer.bot, автоматично замінити код дії неможливо.");
         }
 
         AddSectionTitle(p, "❤", "Про скрипт");
@@ -2327,7 +2354,7 @@ public class CPHInline
             var child = VisualTreeHelper.GetChild(parent, i);
             if (child is TextBox tb && tb.Tag is string tag && !string.IsNullOrEmpty(tag))
             {
-                // Пропускаємо placeholder-значення (tag == text означає порожнє поле)
+              
                 string val = tb.Text?.Trim() ?? "";
                 if (val == tag) val = "";
                 CPH.SetGlobalVar(tag, val, true);

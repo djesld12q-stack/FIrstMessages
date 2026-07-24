@@ -296,14 +296,11 @@ public class CPHInline
         }
     }
 
-    // =====================================================================
-    //  АВТООНОВЛЕННЯ (перевірка версії + копіювання коду з GitHub у буфер обміну)
-    // =====================================================================
-
     private const string UpdateVersionUrl   = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Version";
     private const string UpdateCodeUrl      = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Code";
+    private const string UpdateDownloadPath = @"";
 
-    private const string CurrentVersion = "1.0.1";
+    private const string CurrentVersion = "1.0.3";
 
     private string HttpGetString(string url)
     {
@@ -314,10 +311,18 @@ public class CPHInline
             {
                 client.Headers.Add("User-Agent", "StreamerBot-Hello-Updater");
                 client.Encoding = Encoding.UTF8;
-                
+
                 string sep = url.Contains("?") ? "&" : "?";
                 string bustedUrl = url + sep + "cachebust=" + DateTime.UtcNow.Ticks;
-                return client.DownloadString(bustedUrl);
+
+                var task = client.DownloadStringTaskAsync(bustedUrl);
+                if (!task.Wait(TimeSpan.FromSeconds(5)))
+                {
+                    client.CancelAsync();
+                    LogToFile($"[UPDATE HTTP TIMEOUT] {url}");
+                    return null;
+                }
+                return task.Result;
             }
         }
         catch (Exception ex)
@@ -327,11 +332,6 @@ public class CPHInline
         }
     }
 
-    /// <summary>
-    /// Перевіряє версію в репозиторії й порівнює з поточною версією скрипта.
-    /// Якщо є новіша — пише повідомлення в чат (якщо announceInChat = true) і в лог,
-    /// та зберігає прапорці/значення у глобальні змінні для GUI.
-    /// </summary>
     private bool CheckForUpdate(bool announceInChat = false)
     {
         try
@@ -354,7 +354,7 @@ public class CPHInline
 
             if (isNewer)
             {
-                string msg = $"⚡ Доступне оновлення скрипта Hello: {CurrentVersion} → {remoteVersion}. Онови код через Streamer.bot (Import Code) або кнопку «Скопіювати оновлення» у вкладці «Про мене».";
+                string msg = $"⚡ Доступне оновлення скрипта Hello: {CurrentVersion} → {remoteVersion}. Онови код через Streamer.bot (Import Code) або кнопку «Завантажити оновлення» у вкладці «Про мене».";
                 LogToFile($"[UPDATE] 🔔 Знайдено нову версію: {remoteVersion} (поточна: {CurrentVersion})");
                 CPH.SetGlobalVar("Hello_updateStatus", $"Доступна нова версія: {remoteVersion}", true);
                 CPH.LogWarn($"[HELLO UPDATE] Доступна нова версія {remoteVersion} (поточна {CurrentVersion})");
@@ -382,10 +382,7 @@ public class CPHInline
         }
     }
 
-    /// <summary>
-    /// Порівнює дві версії у форматі "1.2.3". Повертає true, якщо remote новіша за local.
-    /// Якщо формат не парситься як версія — порівнює як прості рядки (remote != local).
-    /// </summary>
+  
     private bool IsVersionNewer(string remote, string local)
     {
         try
@@ -399,7 +396,7 @@ public class CPHInline
         }
         catch { }
 
-        // fallback: прості рядки не рівні => вважаємо що є "оновлення"
+    
         return !string.Equals(remote?.Trim(), local?.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
@@ -407,16 +404,12 @@ public class CPHInline
     {
         if (string.IsNullOrWhiteSpace(v)) return "0.0.0";
         v = v.Trim().TrimStart('v', 'V');
-        // Version.Parse не любить одиночні числа типу "5" — доповнюємо до "5.0"
         int dots = v.Count(c => c == '.');
         if (dots == 0) v += ".0";
         return v;
     }
 
-    /// <summary>
-    /// Завантажує актуальний код (файл Code) з репозиторію і повертає його текстом,
-    /// щоб можна було одразу скопіювати в буфер обміну (без збереження на диск).
-    /// </summary>
+
     private bool DownloadLatestCode(out string code)
     {
         code = null;
@@ -444,10 +437,6 @@ public class CPHInline
         }
     }
 
-    /// <summary>
-    /// Копіює текст у буфер обміну. Буфер обміну Windows іноді тимчасово зайнятий
-    /// іншим процесом (антивірус, менеджер буфера тощо), тому робимо кілька спроб.
-    /// </summary>
     private bool TryCopyToClipboard(string text)
     {
         for (int attempt = 0; attempt < 6; attempt++)
@@ -466,9 +455,6 @@ public class CPHInline
         return false;
     }
 
-    // =====================================================================
-    //  EXECUTE
-    // =====================================================================
 
     public bool Execute()
     {
@@ -701,10 +687,6 @@ public class CPHInline
         }
     }
 
-    // =====================================================================
-    //  ЧЕРГА
-    // =====================================================================
-
     private void ProcessQueue()
     {
         while (true)
@@ -751,9 +733,6 @@ public class CPHInline
         CPH.SetGlobalVar("Hello_pendingQueue", str, true);
     }
 
-    // =====================================================================
-    //  ПЕРСОНАЛЬНИЙ ЗВУК
-    // =====================================================================
 
     private string GetUserSound(string userKey)
     {
@@ -783,9 +762,6 @@ public class CPHInline
         return null;
     }
 
-    // =====================================================================
-    //  ПРИВІТАННЯ / МЕДІА
-    // =====================================================================
 
     private string GetGreetingText(string user, string viewers = null, bool isRaid = false)
     {
@@ -877,9 +853,6 @@ public class CPHInline
         CPH.SetGlobalVar("Hello_greetedList", str, true);
     }
 
-    // =====================================================================
-    //  ДОПОМІЖНІ / ФІЛЬТРИ
-    // =====================================================================
 
     private HashSet<string> GetIgnoreSet(string k)
     {
@@ -2080,7 +2053,7 @@ public class CPHInline
         // це і спричиняло краш "different thread owns it" при натисканні кнопок.
         Dispatcher uiDispatcher = ownerWindow.Dispatcher;
 
-        AddSectionTitle(p, "🔄", "Оновлення", "Перевірка та копіювання нової версії скрипта");
+        AddSectionTitle(p, "🔄", "Оновлення", "Перевірка та завантаження нової версії скрипта");
         {
             string status = "";
             try { status = CPH.GetGlobalVar<string>("Hello_updateStatus", true) ?? "Ще не перевірялось"; } catch { status = "Ще не перевірялось"; }
@@ -2128,7 +2101,7 @@ public class CPHInline
 
             var updBtnRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
             var checkBtn  = MakeActionBtn("🔍  Перевірити оновлення", AccentBlue);
-            var dlBtn     = MakeActionBtn("📋  Скопіювати оновлення", AccentGreen);
+            var dlBtn     = MakeActionBtn("⬇  Завантажити оновлення", AccentGreen);
 
             checkBtn.Click += (s, e) =>
             {
@@ -2197,11 +2170,11 @@ public class CPHInline
                     dlBtn.IsEnabled = false;
                     ThreadPool.QueueUserWorkItem(_ =>
                     {
-                        bool   ok   = false;
-                        string code = null;
+                        bool   ok       = false;
+                        string codeText = null;
                         try
                         {
-                            ok = DownloadLatestCode(out code);
+                            ok = DownloadLatestCode(out codeText);
                         }
                         catch (Exception exBg)
                         {
@@ -2214,23 +2187,31 @@ public class CPHInline
                             {
                                 try
                                 {
-                                    bool copied = ok && !string.IsNullOrEmpty(code) && TryCopyToClipboard(code);
-
-                                    dlBtn.Content   = copied ? "✅  Скопійовано!" : "❌  Помилка";
-                                    dlBtn.IsEnabled = true;
-
-                                    if (copied)
+                                    bool clipboardOk = false;
+                                    if (ok && !string.IsNullOrEmpty(codeText))
                                     {
-                                        statusText.Text = "Код скопійовано в буфер обміну — встав його (Ctrl+V) у дію Streamer.bot.";
-                                        CPH.SetGlobalVar("Hello_updateStatus", "Код скопійовано в буфер обміну", true);
+                                        clipboardOk = TryCopyToClipboard(codeText);
+                                    }
+
+                                    if (ok && clipboardOk)
+                                    {
+                                        dlBtn.Content   = "✅  Скопійовано в буфер!";
+                                        statusText.Text = "Код скопійовано в буфер обміну (Ctrl+V щоб вставити в дію Streamer.bot).";
+                                    }
+                                    else if (ok && !clipboardOk)
+                                    {
+                                        dlBtn.Content   = "⚠  Буфер не вдався";
+                                        statusText.Text = "Код завантажено, але скопіювати в буфер не вдалось. Спробуй ще раз.";
                                     }
                                     else
                                     {
-                                        statusText.Text = "Не вдалось скопіювати код у буфер обміну. Спробуй ще раз.";
+                                        dlBtn.Content = "❌  Помилка";
                                     }
 
+                                    dlBtn.IsEnabled = true;
+
                                     var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2500) };
-                                    timer.Tick += (ts, te) => { timer.Stop(); dlBtn.Content = "📋  Скопіювати оновлення"; };
+                                    timer.Tick += (ts, te) => { timer.Stop(); dlBtn.Content = "⬇  Завантажити оновлення"; };
                                     timer.Start();
                                 }
                                 catch (Exception exUi)
@@ -2251,7 +2232,7 @@ public class CPHInline
                 {
                     CPH.LogWarn($"[HELLO GUI] Download-update click error: {exClick.Message}");
                     LogToFile($"[UPDATE DOWNLOAD CLICK ERROR] {exClick.Message}");
-                    dlBtn.Content   = "📋  Скопіювати оновлення";
+                    dlBtn.Content   = "⬇  Завантажити оновлення";
                     dlBtn.IsEnabled = true;
                 }
             };
@@ -2265,7 +2246,7 @@ public class CPHInline
 
             AddHintBox(p,
                 "Перевірка звіряє файл Version у репозиторії з версією, вшитою в цей скрипт.\n" +
-                "«Скопіювати оновлення» копіює актуальний код (файл Code) у буфер обміну — просто встав його (Ctrl+V) у дію Streamer.bot.");
+                "«Завантажити оновлення» копіює актуальний код у буфер обміну — встав його (Ctrl+V) у дію Streamer.bot.");
         }
 
         AddSectionTitle(p, "❤", "Про скрипт");

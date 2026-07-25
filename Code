@@ -295,7 +295,7 @@ public class CPHInline
     private const string UpdateCodeUrl      = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Code";
     private const string UpdateDownloadPath = @"";
 
-    private const string CurrentVersion = "1.0.6";
+    private const string CurrentVersion = "1.0.7";
 
     // ── Джерела фільтр-списків на GitHub (авто-синхронізація) ──
     private const string BlokRussianUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/BlokRussian";
@@ -742,11 +742,8 @@ public class CPHInline
 
             LogToFile($"[PROFILE URL] {user} | url='{profileImageUrl ?? "null"}'");
 
-            if (sendText && !string.IsNullOrEmpty(greetingText))
-            {
-                try { CPH.SendMessage(greetingText, true); LogToFile($"[TEXT] {user} | Відправлено"); }
-                catch (Exception ex) { LogToFile($"[TEXT ERROR] {user} | {ex.Message}"); }
-            }
+            // ── Текст у чат більше НЕ відправляється тут напряму. ──
+            // ── Він переїхав всередину mediaAction, щоб іти через чергу послідовно. ──
 
             string capturedUser       = user;
             bool   capturedPlaySound  = playSound;
@@ -756,6 +753,12 @@ public class CPHInline
 
             Action mediaAction = () =>
             {
+                if (sendText && !string.IsNullOrEmpty(greetingText))
+                {
+                    try { CPH.SendMessage(greetingText, true); LogToFile($"[TEXT] {capturedUser} | Відправлено"); }
+                    catch (Exception ex) { LogToFile($"[TEXT ERROR] {capturedUser} | {ex.Message}"); }
+                }
+
                 try
                 {
                     PlayMedia(capturedUser, capturedPlaySound, capturedProfileUrl, capturedSoundPath);
@@ -1056,31 +1059,30 @@ public class CPHInline
     }
 
     private bool ContainsBadDomain(string t)
+{
+    var bad  = Split(GetSetting("ignoreDomains"));
+    var good = Split(GetSetting("allowedDomains"));
+    if (bad.Count == 0 || string.IsNullOrWhiteSpace(t)) return false;
+
+    var matches = UrlRegex.Matches(t);
+    foreach (Match m in matches)
     {
-        var bad  = Split(GetSetting("ignoreDomains"));
-        var good = Split(GetSetting("allowedDomains"));
-        if (bad.Count == 0) return false;
+        string h = ExtractHost(m.Value);
+        if (string.IsNullOrEmpty(h)) continue;
 
-        var matches = UrlRegex.Matches(t);
-        if (matches.Count == 0) return false;
+        if (good.Any(d =>
+            h.Equals(d.TrimStart('.'), StringComparison.OrdinalIgnoreCase) ||
+            h.EndsWith("." + d.TrimStart('.'), StringComparison.OrdinalIgnoreCase)))
+            continue;
 
-        foreach (Match m in matches)
-        {
-            string h = ExtractHost(m.Value);
-            if (string.IsNullOrEmpty(h)) continue;
-
-            if (good.Any(d =>
-                h.Equals(d.TrimStart('.'), StringComparison.OrdinalIgnoreCase) ||
-                h.EndsWith("." + d.TrimStart('.'), StringComparison.OrdinalIgnoreCase)))
-                continue;
-
-            if (bad.Any(d =>
-                h.Equals(d.TrimStart('.'), StringComparison.OrdinalIgnoreCase) ||
-                h.EndsWith("." + d.TrimStart('.'), StringComparison.OrdinalIgnoreCase)))
-                return true;
-        }
-        return false;
+        if (bad.Any(d =>
+            h.Equals(d.TrimStart('.'), StringComparison.OrdinalIgnoreCase) ||
+            h.EndsWith("." + d.TrimStart('.'), StringComparison.OrdinalIgnoreCase)))
+            return true;
     }
+
+    return false;
+}
 
     private string ExtractHost(string url)
     {

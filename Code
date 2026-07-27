@@ -389,6 +389,7 @@ public class CPHInline
         }
     }
 
+    // ── НОВЕ: перевірка версії старого (rollback) коду з файлу "oldversion" на GitHub ──
     private bool CheckOldVersion()
     {
         try
@@ -707,7 +708,13 @@ public class CPHInline
 
             LogToFile($"[EXECUTE START] {user} | greetedList: '{CPH.GetGlobalVar<string>("Hello_greetedList", true) ?? "null"}'");
 
-
+            // ── ВАЖЛИВО: streamJustStarted більше не скипає глядача повністю ──
+            // Раніше при одночасному напливі глядачів одразу після старту стріму
+            // цей прапорець міг призвести до того, що частину людей "з'їдало" —
+            // вони писали саме в ту мілісекунду, коли йшло очищення списків,
+            // і функція виходила з return true ДО того, як людину додавали в чергу.
+            // Тепер прапорець лише гарантує одноразове очищення списків при старті,
+            // а сам глядач ЗАВЖДИ йде далі по коду і потрапляє в чергу.
             if (streamJustStarted)
             {
                 lock (queueLock)
@@ -769,7 +776,12 @@ public class CPHInline
 
             bool isTestMode = (GetArg("__test") ?? "").Equals("true", StringComparison.OrdinalIgnoreCase);
 
-
+            // ── Атомарна перевірка "вже привітаний" + резервування місця ──
+            // Раніше перевірка greeted.Contains(key) і подальший greeted.Add(key)
+            // були рознесені по коду з обробкою повідомлення між ними.
+            // При двох майже одночасних викликах Execute() для РІЗНИХ людей це не
+            // проблема (кожен свій key), але для стабільності й наочності весь
+            // блок "перевір і зарезервуй" тепер один атомарний lock.
             bool alreadyGreetedOrQueued;
             lock (queueLock)
             {
@@ -830,7 +842,10 @@ public class CPHInline
 
             Action mediaAction = () =>
             {
-
+                // Позначаємо як привітаного ПЕРЕД відтворенням, щоб дублікат-подія
+                // (наприклад друге "перше повідомлення" від того ж юзера, що встигло
+                // прийти поки цей екшн ще чекав у черзі) не могла проскочити повз
+                // перевірку GetGreetedSet вище, поки цей запис ще не збережений.
                 lock (queueLock)
                 {
                     var greetedSet = GetGreetedSet();
@@ -864,6 +879,12 @@ public class CPHInline
                 LogToFile($"[QUEUE DONE] {capturedUser} | Видалено з pendingQueue, привітання завершено");
             };
 
+            // ── СУВОРА FIFO-ЧЕРГА: жодного "пріоритетного" перевставляння наперед. ──
+            // Порядок додавання в pendingQueue/greetQueue = порядок реального виклику
+            // Execute() для кожного глядача, а lock серіалізує доступ, тому навіть
+            // при 20 одночасних заходах ніхто не губиться і порядок не ламається:
+            // хто раніше написав повідомлення (раніше прийшов виклик від Streamer.bot),
+            // той раніше і потрапляє в чергу, і раніше отримає привітання.
             lock (queueLock)
             {
                 var pending = GetPendingQueue();
@@ -929,6 +950,9 @@ public class CPHInline
             }
         }
 
+        // ── Захисна перевірка: якщо після виходу з циклу в чергу щось встигло
+        // додатись (рідкісна гонка), запускаємо обробку ще раз, щоб нікого не
+        // залишити висіти в pendingQueue назавжди.
         bool needsRestart = false;
         lock (queueLock)
         {
@@ -2578,7 +2602,8 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
                             LogToFile($"[ROLLBACK DOWNLOAD BG ERROR] {exBg.Message}");
                         }
 
-                       
+                        // ── НОВЕ: після завантаження коду для відкату також підтягуємо
+                        // актуальну версію "oldversion", щоб напис у GUI був свіжим ──
                         try
                         {
                             CheckOldVersion();

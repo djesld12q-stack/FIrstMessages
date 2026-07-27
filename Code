@@ -295,7 +295,7 @@ public class CPHInline
     private const string UpdateCodeUrl      = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Code";
     private const string UpdateDownloadPath = @"";
 
-    private const string CurrentVersion = "1.0.8";
+    private const string CurrentVersion = "1.1.0";
 
     // ── Джерела фільтр-списків на GitHub (авто-синхронізація) ──
     
@@ -647,13 +647,28 @@ public class CPHInline
 
             LogToFile($"[EXECUTE START] {user} | greetedList: '{CPH.GetGlobalVar<string>("Hello_greetedList", true) ?? "null"}'");
 
+            // ── ВАЖЛИВО: streamJustStarted більше не скипає глядача повністю ──
+            // Раніше при одночасному напливі глядачів одразу після старту стріму
+            // цей прапорець міг призвести до того, що частину людей "з'їдало" —
+            // вони писали саме в ту мілісекунду, коли йшло очищення списків,
+            // і функція виходила з return true ДО того, як людину додавали в чергу.
+            // Тепер прапорець лише гарантує одноразове очищення списків при старті,
+            // а сам глядач ЗАВЖДИ йде далі по коду і потрапляє в чергу.
             if (streamJustStarted)
             {
-                ClearHelloLists("Execute - streamJustStarted");
-                lock (queueLock) { greetQueue.Clear(); isProcessingQueue = false; }
-                streamJustStarted = false;
-                LogToFile($"[SKIP] {user} | streamJustStarted");
-                return true;
+                lock (queueLock)
+                {
+                    if (streamJustStarted)
+                    {
+                        ClearHelloLists("Execute - streamJustStarted (одноразово)");
+                        greetQueue.Clear();
+                        isProcessingQueue = false;
+                        SavePendingQueue(new List<string>());
+                        streamJustStarted = false;
+                        LogToFile("[STREAM FLAG] Очищення виконано один раз, прапорець знято");
+                    }
+                }
+                // НЕ повертаємо true тут — глядач іде далі й буде привітаний нижче.
             }
 
             string triggerId = GetArg("triggerId");
@@ -700,8 +715,25 @@ public class CPHInline
 
             bool isTestMode = (GetArg("__test") ?? "").Equals("true", StringComparison.OrdinalIgnoreCase);
 
-            var greeted = GetGreetedSet();
-            if (greeted.Contains(key)) { LogToFile($"[SKIP] {user} | Вже привітаний"); return true; }
+            // ── Атомарна перевірка "вже привітаний" + резервування місця ──
+            // Раніше перевірка greeted.Contains(key) і подальший greeted.Add(key)
+            // були рознесені по коду з обробкою повідомлення між ними.
+            // При двох майже одночасних викликах Execute() для РІЗНИХ людей це не
+            // проблема (кожен свій key), але для стабільності й наочності весь
+            // блок "перевір і зарезервуй" тепер один атомарний lock.
+            bool alreadyGreetedOrQueued;
+            lock (queueLock)
+            {
+                var greetedNow  = GetGreetedSet();
+                var pendingNow  = GetPendingQueue();
+                alreadyGreetedOrQueued = greetedNow.Contains(key)
+                    || pendingNow.Any(p => p.Equals(key, StringComparison.OrdinalIgnoreCase));
+            }
+            if (alreadyGreetedOrQueued)
+            {
+                LogToFile($"[SKIP] {user} | Вже привітаний або вже в черзі");
+                return true;
+            }
 
             string message = (GetArg("message")
                 ?? GetArg("input")
@@ -724,9 +756,6 @@ public class CPHInline
 
             LogToFile($"[GREET] {user} | {(isReward ? "Нагорода" : isFirstMessage ? "Перше повідомлення" : isRaid ? "Рейд" : "Тест")}");
 
-            greeted.Add(key);
-            SaveGreetedSet(greeted);
-
             string viewers       = isRaid ? (GetArg("viewers") ?? "багатьох") : null;
             bool   onlyMediaMode = IsOnlyMedia(key);
             bool   noSoundMode   = !onlyMediaMode && IsIgnoredMedia(key);
@@ -744,8 +773,6 @@ public class CPHInline
 
             LogToFile($"[PROFILE URL] {user} | url='{profileImageUrl ?? "null"}'");
 
-           
-
             string capturedUser       = user;
             bool   capturedPlaySound  = playSound;
             string capturedProfileUrl = profileImageUrl;
@@ -754,6 +781,17 @@ public class CPHInline
 
             Action mediaAction = () =>
             {
+                // Позначаємо як привітаного ПЕРЕД відтворенням, щоб дублікат-подія
+                // (наприклад друге "перше повідомлення" від того ж юзера, що встигло
+                // прийти поки цей екшн ще чекав у черзі) не могла проскочити повз
+                // перевірку GetGreetedSet вище, поки цей запис ще не збережений.
+                lock (queueLock)
+                {
+                    var greetedSet = GetGreetedSet();
+                    greetedSet.Add(capturedKey);
+                    SaveGreetedSet(greetedSet);
+                }
+
                 if (sendText && !string.IsNullOrEmpty(greetingText))
                 {
                     try { CPH.SendMessage(greetingText, true); LogToFile($"[TEXT] {capturedUser} | Відправлено"); }
@@ -776,37 +814,36 @@ public class CPHInline
                     pending.RemoveAll(p => p.Equals(capturedKey, StringComparison.OrdinalIgnoreCase));
                     SavePendingQueue(pending);
                 }
+
+                LogToFile($"[QUEUE DONE] {capturedUser} | Видалено з pendingQueue, привітання завершено");
             };
 
+            // ── СУВОРА FIFO-ЧЕРГА: жодного "пріоритетного" перевставляння наперед. ──
+            // Порядок додавання в pendingQueue/greetQueue = порядок реального виклику
+            // Execute() для кожного глядача, а lock серіалізує доступ, тому навіть
+            // при 20 одночасних заходах ніхто не губиться і порядок не ламається:
+            // хто раніше написав повідомлення (раніше прийшов виклик від Streamer.bot),
+            // той раніше і потрапляє в чергу, і раніше отримає привітання.
             lock (queueLock)
             {
                 var pending = GetPendingQueue();
                 if (!pending.Any(p => p.Equals(key, StringComparison.OrdinalIgnoreCase)))
                 {
-                    bool hasPriority = isReward || isFirstMessage || isRaid;
-                    if (hasPriority)
-                    {
-                        pending.Insert(0, key);
-                        var existing = greetQueue.ToArray();
-                        greetQueue.Clear();
-                        greetQueue.Enqueue(mediaAction);
-                        foreach (var a in existing) greetQueue.Enqueue(a);
-                        LogToFile($"[QUEUE] {user} | ПРІОРИТЕТ");
-                    }
-                    else
-                    {
-                        pending.Add(key);
-                        greetQueue.Enqueue(mediaAction);
-                        LogToFile($"[QUEUE] {user} | Додано");
-                    }
+                    pending.Add(key);
+                    greetQueue.Enqueue(mediaAction);
                     SavePendingQueue(pending);
+                    LogToFile($"[QUEUE] {user} | Додано у чергу (позиція {pending.Count} з {pending.Count})");
+                }
+                else
+                {
+                    LogToFile($"[QUEUE] {user} | Вже в pendingQueue — дублікат проігноровано");
                 }
             }
 
             bool shouldStart = false;
             lock (queueLock)
             {
-                if (!isProcessingQueue)
+                if (!isProcessingQueue && greetQueue.Count > 0)
                 {
                     isProcessingQueue = true;
                     shouldStart = true;
@@ -851,6 +888,21 @@ public class CPHInline
                 }
             }
         }
+
+        // ── Захисна перевірка: якщо після виходу з циклу в чергу щось встигло
+        // додатись (рідкісна гонка), запускаємо обробку ще раз, щоб нікого не
+        // залишити висіти в pendingQueue назавжди.
+        bool needsRestart = false;
+        lock (queueLock)
+        {
+            if (!isProcessingQueue && greetQueue.Count > 0)
+            {
+                isProcessingQueue = true;
+                needsRestart = true;
+            }
+        }
+        if (needsRestart)
+            ProcessQueue();
     }
 
     private List<string> GetPendingQueue()

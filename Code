@@ -2394,14 +2394,14 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
 
             // ── НОВЕ: рядок з версією для відкату (rollback) ──
             var oldVerRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
-            oldVerRow.Children.Add(new TextBlock { Text = "Версія відкату", FontSize = 12, Foreground = new SolidColorBrush(TextMuted) });
+            oldVerRow.Children.Add(new TextBlock { Text = "Версія відкату (rollback): ", FontSize = 12, Foreground = new SolidColorBrush(TextMuted) });
             var oldVerValueText = new TextBlock { Text = oldVersion, FontSize = 12, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Color.FromRgb(255, 180, 120)) };
             oldVerRow.Children.Add(oldVerValueText);
             updInner.Children.Add(oldVerRow);
 
             var statusText = new TextBlock
             {
-                Text       = $"Статус: {status}"  + (!string.IsNullOrEmpty(remoteV) ? $"  (репозиторій: {remoteV})" : ""),
+                Text       = $"Статус: {status}" + (!string.IsNullOrEmpty(remoteV) ? $"  (репозиторій: {remoteV})" : ""),
                 FontSize   = 12,
                 Foreground = new SolidColorBrush(TextMuted),
                 Margin     = new Thickness(0, 0, 0, 4),
@@ -2424,7 +2424,7 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
             {
                 updInner.Children.Add(new TextBlock
                 {
-                    Text       = $"Остання перевірка версії відкату:  {oldVersionCheck}",
+                    Text       = $"Остання перевірка версії відкату: {oldVersionCheck}",
                     FontSize   = 10,
                     Foreground = new SolidColorBrush(TextMuted),
                     Margin     = new Thickness(0, 0, 0, 10)

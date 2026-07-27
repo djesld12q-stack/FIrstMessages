@@ -295,14 +295,16 @@ public class CPHInline
     private const string UpdateCodeUrl      = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Code";
     private const string UpdateDownloadPath = @"";
 
-    private const string CurrentVersion = "1.0.7";
+    private const string CurrentVersion = "1.0.8";
 
     // ── Джерела фільтр-списків на GitHub (авто-синхронізація) ──
+    
     private const string BlokRussianUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/BlokRussian";
     private const string IgnorSlovaUrl  = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/IgnorSlova";
     private const string IgnorSymvolUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/ignorSymvol";
     private const string ZablokovaniDomenUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/zablokovanidomen";
     private const string DozvilDomenUrl      = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/dozvildomen";
+    private const string BotyListUrl         = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/boty.html";
 
     private string HttpGetString(string url)
     {
@@ -742,8 +744,7 @@ public class CPHInline
 
             LogToFile($"[PROFILE URL] {user} | url='{profileImageUrl ?? "null"}'");
 
-            // ── Текст у чат більше НЕ відправляється тут напряму. ──
-            // ── Він переїхав всередину mediaAction, щоб іти через чергу послідовно. ──
+           
 
             string capturedUser       = user;
             bool   capturedPlaySound  = playSound;

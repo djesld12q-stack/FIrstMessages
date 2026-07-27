@@ -293,6 +293,7 @@ public class CPHInline
 
     private const string UpdateVersionUrl   = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Version";
     private const string UpdateCodeUrl      = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Code";
+    private const string OldCodeUrl         = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/OldCode.C%23";
     private const string UpdateDownloadPath = @"";
 
     private const string CurrentVersion = "1.1.0";
@@ -437,6 +438,33 @@ public class CPHInline
             LogToFile($"[UPDATE DOWNLOAD ERROR] {ex.Message}");
             CPH.LogError($"[HELLO UPDATE] {ex.Message}");
             CPH.SetGlobalVar("Hello_updateStatus", "Помилка завантаження коду", true);
+            return false;
+        }
+    }
+
+    private bool DownloadOldCode(out string code)
+    {
+        code = null;
+        try
+        {
+            LogToFile("[ROLLBACK] ⬇ Завантаження попередньої версії коду...");
+            string remote = HttpGetString(OldCodeUrl);
+            if (string.IsNullOrWhiteSpace(remote))
+            {
+                LogToFile("[ROLLBACK] ❌ Не вдалось завантажити OldCode з репозиторію");
+                CPH.SetGlobalVar("Hello_rollbackStatus", "Помилка завантаження старої версії", true);
+                return false;
+            }
+
+            code = remote;
+            LogToFile("[ROLLBACK] ✅ Попередню версію коду отримано з репозиторію");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogToFile($"[ROLLBACK DOWNLOAD ERROR] {ex.Message}");
+            CPH.LogError($"[HELLO ROLLBACK] {ex.Message}");
+            CPH.SetGlobalVar("Hello_rollbackStatus", "Помилка завантаження старої версії", true);
             return false;
         }
     }
@@ -2348,6 +2376,7 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
             var updBtnRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
             var checkBtn  = MakeActionBtn("🔍  Перевірити оновлення", AccentBlue);
             var dlBtn     = MakeActionBtn("⬇  Завантажити оновлення", AccentGreen);
+            var rollbackBtn = MakeActionBtn("⟲  Повернутись на попередню версію", AccentRed);
 
             checkBtn.Click += (s, e) =>
             {
@@ -2480,8 +2509,84 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
                 }
             };
 
+            rollbackBtn.Click += (s, e) =>
+            {
+                try
+                {
+                    rollbackBtn.Content   = "⏳  Завантаження старої версії...";
+                    rollbackBtn.IsEnabled = false;
+                    ThreadPool.QueueUserWorkItem(_ =>
+                    {
+                        bool   ok       = false;
+                        string codeText = null;
+                        try
+                        {
+                            ok = DownloadOldCode(out codeText);
+                        }
+                        catch (Exception exBg)
+                        {
+                            LogToFile($"[ROLLBACK DOWNLOAD BG ERROR] {exBg.Message}");
+                        }
+
+                        try
+                        {
+                            uiDispatcher.Invoke(() =>
+                            {
+                                try
+                                {
+                                    bool clipboardOk = false;
+                                    if (ok && !string.IsNullOrEmpty(codeText))
+                                    {
+                                        clipboardOk = TryCopyToClipboard(codeText);
+                                    }
+
+                                    if (ok && clipboardOk)
+                                    {
+                                        rollbackBtn.Content = "✅  Стару версію скопійовано!";
+                                        statusText.Text     = "Попередню версію коду скопійовано в буфер обміну (Ctrl+V щоб вставити в дію Streamer.bot).";
+                                    }
+                                    else if (ok && !clipboardOk)
+                                    {
+                                        rollbackBtn.Content = "⚠  Буфер не вдався";
+                                        statusText.Text     = "Стару версію завантажено, але скопіювати в буфер не вдалось. Спробуй ще раз.";
+                                    }
+                                    else
+                                    {
+                                        rollbackBtn.Content = "❌  Помилка";
+                                    }
+
+                                    rollbackBtn.IsEnabled = true;
+
+                                    var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2500) };
+                                    timer.Tick += (ts, te) => { timer.Stop(); rollbackBtn.Content = "⟲  Повернутись на попередню версію"; };
+                                    timer.Start();
+                                }
+                                catch (Exception exUi)
+                                {
+                                    CPH.LogWarn($"[HELLO GUI] Rollback UI update error: {exUi.Message}");
+                                    LogToFile($"[ROLLBACK UI ERROR] {exUi.Message}");
+                                }
+                            });
+                        }
+                        catch (Exception exDisp)
+                        {
+                            CPH.LogWarn($"[HELLO GUI] Rollback dispatcher error: {exDisp.Message}");
+                            LogToFile($"[ROLLBACK DISPATCH ERROR] {exDisp.Message}");
+                        }
+                    });
+                }
+                catch (Exception exClick)
+                {
+                    CPH.LogWarn($"[HELLO GUI] Rollback click error: {exClick.Message}");
+                    LogToFile($"[ROLLBACK CLICK ERROR] {exClick.Message}");
+                    rollbackBtn.Content   = "⟲  Повернутись на попередню версію";
+                    rollbackBtn.IsEnabled = true;
+                }
+            };
+
             updBtnRow.Children.Add(checkBtn);
             updBtnRow.Children.Add(dlBtn);
+            updBtnRow.Children.Add(rollbackBtn);
             updInner.Children.Add(updBtnRow);
 
             updCard.Child = updInner;
@@ -2489,7 +2594,8 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
 
             AddHintBox(p,
                 "Перевірка звіряє файл Version у репозиторії з версією, вшитою в цей скрипт.\n" +
-                "«Завантажити оновлення» копіює актуальний код у буфер обміну — встав його (Ctrl+V) у дію Streamer.bot.");
+                "«Завантажити оновлення» копіює актуальний код у буфер обміну — встав його (Ctrl+V) у дію Streamer.bot.\n" +
+                "«Повернутись на попередню версію» копіює старий код (OldCode) з репозиторію в буфер обміну — так само встав через Ctrl+V у дію Streamer.bot, щоб відкотитись.");
         }
 
         AddSectionTitle(p, "🌐", "Синхронізація фільтрів", "Автопідтягування з GitHub");

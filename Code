@@ -21,83 +21,85 @@ using System.Windows.Input;
 public class CPHInline
 {
     private static readonly Random rnd = new Random();
-
-    private static readonly Regex UrlRegex = new Regex(
-        @"(?:https?://|www\.)[^\s<>()]+"
-        + @"|(?<![.\w@])t\.co/[^\s<>()]+"
-        + @"|(?<![.\w@])[a-zA-Z0-9][a-zA-Z0-9\-]{1,61}[a-zA-Z0-9]"
-        + @"\.(?:com|net|org|io|tv|gg|me|co|uk|ua|de|fr|ru|live"
-        + @"|stream|chat|link|xyz|to|ly|gl|sh|fm|app|dev|club|pro"
-        + @"|site|online|info|biz|store|shop|cc|vc|ws)(?:/[^\s<>()]*)?",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
+    private static readonly Regex UrlRegex = new Regex(@"(?:https?://|www\.)[^\s<>()]+" + @"|(?<![.\w@])t\.co/[^\s<>()]+" + @"|(?<![.\w@])[a-zA-Z0-9][a-zA-Z0-9\-]{1,61}[a-zA-Z0-9]" + @"\.(?:com|net|org|io|tv|gg|me|co|uk|ua|de|fr|ru|live" + @"|stream|chat|link|xyz|to|ly|gl|sh|fm|app|dev|club|pro" + @"|site|online|info|biz|store|shop|cc|vc|ws)(?:/[^\s<>()]*)?", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private const string ClearedMarker = ".";
-    private const string LogFilePath   = @"D:\ProgramFiles\Program\obs\stremerbot\DebugStremerbotFirsMessages.txt";
-
-    private readonly Queue<Action> greetQueue        = new Queue<Action>();
-    private          bool          isProcessingQueue = false;
-    private static   readonly object queueLock       = new object();
-    private static volatile bool streamJustStarted   = false;
-
+    private const string LogFilePath = @"D:\ProgramFiles\Program\obs\stremerbot\DebugStremerbotFirsMessages.txt";
+    private readonly Queue<Action> greetQueue = new Queue<Action>();
+    private bool isProcessingQueue = false;
+    private static readonly object queueLock = new object ();
+    private static volatile bool streamJustStarted = false;
     // ── Кольори GUI ──
-    private static readonly Color BgDark       = Color.FromRgb(8,   5,  20);
-    private static readonly Color BgCard       = Color.FromRgb(16,  9,  38);
-    private static readonly Color BgInput      = Color.FromRgb(24, 13,  52);
+    private static readonly Color BgDark = Color.FromRgb(8, 5, 20);
+    private static readonly Color BgCard = Color.FromRgb(16, 9, 38);
+    private static readonly Color BgInput = Color.FromRgb(24, 13, 52);
     private static readonly Color AccentPurple = Color.FromRgb(150, 70, 255);
-    private static readonly Color AccentBlue   = Color.FromRgb(70, 160, 255);
-    private static readonly Color AccentGreen  = Color.FromRgb(50, 210, 120);
-    private static readonly Color AccentRed    = Color.FromRgb(230, 60,  80);
-    private static readonly Color TextPrimary  = Color.FromRgb(230, 222, 255);
-    private static readonly Color TextMuted    = Color.FromArgb(170, 185, 160, 255);
-    private static readonly Color BorderNormal = Color.FromArgb(70,  140,  70, 220);
-    private static readonly Color BorderFocus  = Color.FromArgb(220, 160,  90, 255);
-
+    private static readonly Color AccentBlue = Color.FromRgb(70, 160, 255);
+    private static readonly Color AccentGreen = Color.FromRgb(50, 210, 120);
+    private static readonly Color AccentRed = Color.FromRgb(230, 60, 80);
+    private static readonly Color TextPrimary = Color.FromRgb(230, 222, 255);
+    private static readonly Color TextMuted = Color.FromArgb(170, 185, 160, 255);
+    private static readonly Color BorderNormal = Color.FromArgb(70, 140, 70, 220);
+    private static readonly Color BorderFocus = Color.FromArgb(220, 160, 90, 255);
     // =====================================================================
     //  ВИЗНАЧЕННЯ ТИПУ ПОДІЇ (stream start / stop)
     // =====================================================================
-
     private bool IsStreamStartEvent()
     {
-        string[] keys = { "eventType", "__source", "triggerName", "eventSource", "__trigger", "type" };
+        string[] keys =
+        {
+            "eventType",
+            "__source",
+            "triggerName",
+            "eventSource",
+            "__trigger",
+            "type"
+        };
         foreach (var k in keys)
         {
             string v = (GetArg(k) ?? "").ToLowerInvariant();
-            if (string.IsNullOrEmpty(v)) continue;
-
+            if (string.IsNullOrEmpty(v))
+                continue;
             bool hasStream = v.Contains("stream") || v.Contains("obs");
-            bool hasStart  = v.Contains("start") || v.Contains("began") || v.Contains("begin") || v.Contains("launch");
-
-            if (hasStream && hasStart) return true;
-
-            if (v == "streamstarted" || v == "obs_stream_started" || v == "obsstreaming_started") return true;
+            bool hasStart = v.Contains("start") || v.Contains("began") || v.Contains("begin") || v.Contains("launch");
+            if (hasStream && hasStart)
+                return true;
+            if (v == "streamstarted" || v == "obs_stream_started" || v == "obsstreaming_started")
+                return true;
         }
 
         string explicit_ = (GetArg("helloEvent") ?? "").ToLowerInvariant();
-        if (explicit_ == "streamstarted" || explicit_ == "start") return true;
-
+        if (explicit_ == "streamstarted" || explicit_ == "start")
+            return true;
         return false;
     }
 
     private bool IsStreamStopEvent()
     {
-        string[] keys = { "eventType", "__source", "triggerName", "eventSource", "__trigger", "type" };
+        string[] keys =
+        {
+            "eventType",
+            "__source",
+            "triggerName",
+            "eventSource",
+            "__trigger",
+            "type"
+        };
         foreach (var k in keys)
         {
             string v = (GetArg(k) ?? "").ToLowerInvariant();
-            if (string.IsNullOrEmpty(v)) continue;
-
+            if (string.IsNullOrEmpty(v))
+                continue;
             bool hasStream = v.Contains("stream") || v.Contains("obs");
-            bool hasStop   = v.Contains("stop")   || v.Contains("end")  || v.Contains("finish")
-                          || v.Contains("ended")   || v.Contains("halt");
-
-            if (hasStream && hasStop) return true;
-
-            if (v == "streamstopped" || v == "obs_stream_stopped" || v == "obsstreaming_stopped") return true;
+            bool hasStop = v.Contains("stop") || v.Contains("end") || v.Contains("finish") || v.Contains("ended") || v.Contains("halt");
+            if (hasStream && hasStop)
+                return true;
+            if (v == "streamstopped" || v == "obs_stream_stopped" || v == "obsstreaming_stopped")
+                return true;
         }
 
         string explicit_ = (GetArg("helloEvent") ?? "").ToLowerInvariant();
-        if (explicit_ == "streamstopped" || explicit_ == "stop") return true;
-
+        if (explicit_ == "streamstopped" || explicit_ == "stop")
+            return true;
         return false;
     }
 
@@ -108,48 +110,41 @@ public class CPHInline
             string dir = Path.GetDirectoryName(LogFilePath);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
-
-            List<string> lines = File.Exists(LogFilePath)
-                ? File.ReadAllLines(LogFilePath).ToList()
-                : new List<string>();
-
+            List<string> lines = File.Exists(LogFilePath) ? File.ReadAllLines(LogFilePath).ToList() : new List<string>();
             DateTime cutoff = DateTime.Now.AddDays(-3);
             lines.RemoveAll(line =>
             {
-                if (string.IsNullOrWhiteSpace(line) || line.Length < 19) return true;
+                if (string.IsNullOrWhiteSpace(line) || line.Length < 19)
+                    return true;
                 string dateStr = line.Substring(0, 19);
-                return !DateTime.TryParseExact(dateStr, "yyyy-MM-dd HH:mm:ss",
-                    CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dt)
-                    || dt < cutoff;
+                return !DateTime.TryParseExact(dateStr, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dt) || dt < cutoff;
             });
-
             lines.Add($"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | {message}");
             File.WriteAllLines(LogFilePath, lines);
         }
-        catch (Exception ex) { CPH.LogError($"[HELLO FILELOG ERROR] {ex.Message}"); }
+        catch (Exception ex)
+        {
+            CPH.LogError($"[HELLO FILELOG ERROR] {ex.Message}");
+        }
     }
 
     // =====================================================================
     //  ОЧИЩЕННЯ СПИСКІВ
     // =====================================================================
-
     private void ClearHelloLists(string reason)
     {
         try
         {
-            string beforeG = CPH.GetGlobalVar<string>("Hello_greetedList",  true) ?? "null";
+            string beforeG = CPH.GetGlobalVar<string>("Hello_greetedList", true) ?? "null";
             string beforeP = CPH.GetGlobalVar<string>("Hello_pendingQueue", true) ?? "null";
             LogToFile($"[CLEAR START] {reason} | greetedList='{beforeG}' | pendingQueue='{beforeP}'");
-
-            CPH.SetGlobalVar("Hello_greetedList",  ClearedMarker, true);
+            CPH.SetGlobalVar("Hello_greetedList", ClearedMarker, true);
             CPH.SetGlobalVar("Hello_pendingQueue", ClearedMarker, true);
             Thread.Sleep(150);
-
-            string afterG = CPH.GetGlobalVar<string>("Hello_greetedList",  true) ?? "null";
+            string afterG = CPH.GetGlobalVar<string>("Hello_greetedList", true) ?? "null";
             string afterP = CPH.GetGlobalVar<string>("Hello_pendingQueue", true) ?? "null";
             bool gOK = afterG == ClearedMarker;
             bool pOK = afterP == ClearedMarker;
-
             if (gOK && pOK)
             {
                 LogToFile($"[CLEAR SUCCESS] {reason}");
@@ -157,15 +152,13 @@ public class CPHInline
             else
             {
                 LogToFile($"[CLEAR RETRY] {reason} | g={gOK} p={pOK} — повторний запис");
-                CPH.SetGlobalVar("Hello_greetedList",  ClearedMarker, true);
+                CPH.SetGlobalVar("Hello_greetedList", ClearedMarker, true);
                 CPH.SetGlobalVar("Hello_pendingQueue", ClearedMarker, true);
                 Thread.Sleep(150);
-
-                string fg = CPH.GetGlobalVar<string>("Hello_greetedList",  true) ?? "null";
+                string fg = CPH.GetGlobalVar<string>("Hello_greetedList", true) ?? "null";
                 string fp = CPH.GetGlobalVar<string>("Hello_pendingQueue", true) ?? "null";
                 bool finalOK = fg == ClearedMarker && fp == ClearedMarker;
                 LogToFile($"[CLEAR END] {reason} | finalOK={finalOK}");
-
                 if (!finalOK)
                     CPH.LogError($"[HELLO CLEAR ERROR] {reason} | g='{fg}' p='{fp}'");
             }
@@ -176,10 +169,12 @@ public class CPHInline
             CPH.LogError($"[HELLO CLEAR ERROR] {ex.Message}");
             try
             {
-                CPH.SetGlobalVar("Hello_greetedList",  ClearedMarker, true);
+                CPH.SetGlobalVar("Hello_greetedList", ClearedMarker, true);
                 CPH.SetGlobalVar("Hello_pendingQueue", ClearedMarker, true);
             }
-            catch { }
+            catch
+            {
+            }
         }
     }
 
@@ -188,9 +183,7 @@ public class CPHInline
         try
         {
             LogToFile("[STREAM START] ▶ Стрім розпочато — початок очищення");
-
             streamJustStarted = true;
-
             lock (queueLock)
             {
                 greetQueue.Clear();
@@ -198,32 +191,26 @@ public class CPHInline
                 LogToFile("[STREAM START] ✓ In-memory черга очищена");
             }
 
-            CPH.SetGlobalVar("Hello_greetedList",  ClearedMarker, true);
+            CPH.SetGlobalVar("Hello_greetedList", ClearedMarker, true);
             CPH.SetGlobalVar("Hello_pendingQueue", ClearedMarker, true);
             Thread.Sleep(200);
-
-            string finalG = CPH.GetGlobalVar<string>("Hello_greetedList",  true) ?? "null";
+            string finalG = CPH.GetGlobalVar<string>("Hello_greetedList", true) ?? "null";
             string finalP = CPH.GetGlobalVar<string>("Hello_pendingQueue", true) ?? "null";
             bool fgOK = finalG == ClearedMarker;
             bool fpOK = finalP == ClearedMarker;
-
             LogToFile($"[STREAM START] ✅ Очищено | greetedList={fgOK} | pendingQueue={fpOK}");
             CPH.LogInfo("[HELLO] ✅ Стрім стартував — Hello_greetedList та Hello_pendingQueue очищено");
-
             if (!fgOK || !fpOK)
             {
                 CPH.LogError($"[HELLO] ❌ Верифікація провалилась: g='{finalG}' p='{finalP}'");
-                CPH.SetGlobalVar("Hello_greetedList",  ClearedMarker, true);
+                CPH.SetGlobalVar("Hello_greetedList", ClearedMarker, true);
                 CPH.SetGlobalVar("Hello_pendingQueue", ClearedMarker, true);
             }
 
             Thread.Sleep(300);
             streamJustStarted = false;
-
-          
             ThreadPool.QueueUserWorkItem(_ => CheckForUpdate());
             ThreadPool.QueueUserWorkItem(_ => CheckOldVersion());
-
             ThreadPool.QueueUserWorkItem(_ => SyncAllFilterLists());
         }
         catch (Exception ex)
@@ -232,13 +219,20 @@ public class CPHInline
             CPH.LogError($"[HELLO STREAM START] {ex.Message}");
             try
             {
-                CPH.SetGlobalVar("Hello_greetedList",  ClearedMarker, true);
+                CPH.SetGlobalVar("Hello_greetedList", ClearedMarker, true);
                 CPH.SetGlobalVar("Hello_pendingQueue", ClearedMarker, true);
-                lock (queueLock) { greetQueue.Clear(); isProcessingQueue = false; }
+                lock (queueLock)
+                {
+                    greetQueue.Clear();
+                    isProcessingQueue = false;
+                }
+
                 streamJustStarted = false;
                 LogToFile("[STREAM START] 🆘 Аварійне очищення виконано");
             }
-            catch { }
+            catch
+            {
+            }
         }
     }
 
@@ -247,9 +241,7 @@ public class CPHInline
         try
         {
             LogToFile("[STREAM STOP] ⏹ Стрім завершено — початок очищення");
-
             streamJustStarted = false;
-
             lock (queueLock)
             {
                 int queueSize = greetQueue.Count;
@@ -258,22 +250,19 @@ public class CPHInline
                 LogToFile($"[STREAM STOP] ✓ In-memory черга очищена (було {queueSize} елементів)");
             }
 
-            CPH.SetGlobalVar("Hello_greetedList",  ClearedMarker, true);
+            CPH.SetGlobalVar("Hello_greetedList", ClearedMarker, true);
             CPH.SetGlobalVar("Hello_pendingQueue", ClearedMarker, true);
             Thread.Sleep(200);
-
-            string finalG = CPH.GetGlobalVar<string>("Hello_greetedList",  true) ?? "null";
+            string finalG = CPH.GetGlobalVar<string>("Hello_greetedList", true) ?? "null";
             string finalP = CPH.GetGlobalVar<string>("Hello_pendingQueue", true) ?? "null";
             bool fgOK = finalG == ClearedMarker;
             bool fpOK = finalP == ClearedMarker;
-
             LogToFile($"[STREAM STOP] ✅ Очищено | greetedList={fgOK} | pendingQueue={fpOK}");
             CPH.LogInfo("[HELLO] ✅ Стрім зупинено — Hello_greetedList та Hello_pendingQueue очищено");
-
             if (!fgOK || !fpOK)
             {
                 CPH.LogError($"[HELLO] ❌ Верифікація при зупинці провалилась: g='{finalG}' p='{finalP}'");
-                CPH.SetGlobalVar("Hello_greetedList",  ClearedMarker, true);
+                CPH.SetGlobalVar("Hello_greetedList", ClearedMarker, true);
                 CPH.SetGlobalVar("Hello_pendingQueue", ClearedMarker, true);
             }
         }
@@ -283,32 +272,35 @@ public class CPHInline
             CPH.LogError($"[HELLO STREAM STOP] {ex.Message}");
             try
             {
-                CPH.SetGlobalVar("Hello_greetedList",  ClearedMarker, true);
+                CPH.SetGlobalVar("Hello_greetedList", ClearedMarker, true);
                 CPH.SetGlobalVar("Hello_pendingQueue", ClearedMarker, true);
-                lock (queueLock) { greetQueue.Clear(); isProcessingQueue = false; }
+                lock (queueLock)
+                {
+                    greetQueue.Clear();
+                    isProcessingQueue = false;
+                }
+
                 LogToFile("[STREAM STOP] 🆘 Аварійне очищення виконано");
             }
-            catch { }
+            catch
+            {
+            }
         }
     }
 
-    private const string UpdateVersionUrl   = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Version";
-    private const string UpdateCodeUrl      = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Code";
-    private const string OldCodeUrl         = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/OldCode.C%23";
-    private const string OldVersionUrl      = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/oldversion";
+    private const string UpdateVersionUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Version";
+    private const string UpdateCodeUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/Code";
+    private const string OldCodeUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/OldCode.C%23";
+    private const string OldVersionUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/oldversion";
     private const string UpdateDownloadPath = @"";
-
-    private const string CurrentVersion = "1.1.0";
-
+    private const string CurrentVersion = "1.1.1";
     // ── Джерела фільтр-списків на GitHub (авто-синхронізація) ──
-    
     private const string BlokRussianUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/BlokRussian";
-    private const string IgnorSlovaUrl  = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/IgnorSlova";
+    private const string IgnorSlovaUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/IgnorSlova";
     private const string IgnorSymvolUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/ignorSymvol";
     private const string ZablokovaniDomenUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/zablokovanidomen";
-    private const string DozvilDomenUrl      = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/dozvildomen";
-    private const string BotyListUrl         = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/boty.html";
-
+    private const string DozvilDomenUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/dozvildomen";
+    private const string Hello_excludedBots = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/boty";
     private string HttpGetString(string url)
     {
         try
@@ -318,10 +310,8 @@ public class CPHInline
             {
                 client.Headers.Add("User-Agent", "StreamerBot-Hello-Updater");
                 client.Encoding = Encoding.UTF8;
-
                 string sep = url.Contains("?") ? "&" : "?";
                 string bustedUrl = url + sep + "cachebust=" + DateTime.UtcNow.Ticks;
-
                 var task = client.DownloadStringTaskAsync(bustedUrl);
                 if (!task.Wait(TimeSpan.FromSeconds(5)))
                 {
@@ -329,6 +319,7 @@ public class CPHInline
                     LogToFile($"[UPDATE HTTP TIMEOUT] {url}");
                     return null;
                 }
+
                 return task.Result;
             }
         }
@@ -353,23 +344,26 @@ public class CPHInline
             }
 
             string remoteVersion = remoteRaw.Trim();
-            CPH.SetGlobalVar("Hello_remoteVersion",  remoteVersion, true);
-            CPH.SetGlobalVar("Hello_lastCheckTime",  DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), true);
-
+            CPH.SetGlobalVar("Hello_remoteVersion", remoteVersion, true);
+            CPH.SetGlobalVar("Hello_lastCheckTime", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), true);
             bool isNewer = IsVersionNewer(remoteVersion, CurrentVersion);
             CPH.SetGlobalVar("Hello_updateAvailable", isNewer ? "true" : "false", true);
-
             if (isNewer)
             {
                 string msg = $"⚡ Доступне оновлення скрипта Hello: {CurrentVersion} → {remoteVersion}. Онови код через Streamer.bot (Import Code) або кнопку «Завантажити оновлення» у вкладці «Про мене».";
                 LogToFile($"[UPDATE] 🔔 Знайдено нову версію: {remoteVersion} (поточна: {CurrentVersion})");
                 CPH.SetGlobalVar("Hello_updateStatus", $"Доступна нова версія: {remoteVersion}", true);
                 CPH.LogWarn($"[HELLO UPDATE] Доступна нова версія {remoteVersion} (поточна {CurrentVersion})");
-
                 if (announceInChat)
                 {
-                    try { CPH.SendMessage(msg, true); }
-                    catch (Exception ex) { LogToFile($"[UPDATE CHAT ERROR] {ex.Message}"); }
+                    try
+                    {
+                        CPH.SendMessage(msg, true);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogToFile($"[UPDATE CHAT ERROR] {ex.Message}");
+                    }
                 }
             }
             else
@@ -407,7 +401,6 @@ public class CPHInline
             CPH.SetGlobalVar("Hello_oldVersion", oldVersion, true);
             CPH.SetGlobalVar("Hello_oldVersionCheckTime", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), true);
             CPH.SetGlobalVar("Hello_oldVersionStatus", "Отримано", true);
-
             LogToFile($"[ROLLBACK] ✅ Версія старого коду (rollback): {oldVersion}");
             return true;
         }
@@ -420,33 +413,33 @@ public class CPHInline
         }
     }
 
-  
     private bool IsVersionNewer(string remote, string local)
     {
         try
         {
             Version rv, lv;
             string remoteNorm = NormalizeVersionString(remote);
-            string localNorm  = NormalizeVersionString(local);
-
+            string localNorm = NormalizeVersionString(local);
             if (Version.TryParse(remoteNorm, out rv) && Version.TryParse(localNorm, out lv))
                 return rv > lv;
         }
-        catch { }
+        catch
+        {
+        }
 
-    
         return !string.Equals(remote?.Trim(), local?.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
     private string NormalizeVersionString(string v)
     {
-        if (string.IsNullOrWhiteSpace(v)) return "0.0.0";
+        if (string.IsNullOrWhiteSpace(v))
+            return "0.0.0";
         v = v.Trim().TrimStart('v', 'V');
         int dots = v.Count(c => c == '.');
-        if (dots == 0) v += ".0";
+        if (dots == 0)
+            v += ".0";
         return v;
     }
-
 
     private bool DownloadLatestCode(out string code)
     {
@@ -517,10 +510,11 @@ public class CPHInline
                 Thread.Sleep(120);
             }
         }
+
         return false;
     }
 
-     private bool SyncRemoteList(string url, string globalVarKey, string logLabel)
+    private bool SyncRemoteList(string url, string globalVarKey, string logLabel)
     {
         try
         {
@@ -532,11 +526,15 @@ public class CPHInline
                 return false;
             }
 
-           
             string cleaned = remote.Replace("\r\n", "\n").Replace("\r", "\n").Trim();
-
             string current = "";
-            try { current = CPH.GetGlobalVar<string>(globalVarKey, true) ?? ""; } catch { }
+            try
+            {
+                current = CPH.GetGlobalVar<string>(globalVarKey, true) ?? "";
+            }
+            catch
+            {
+            }
 
             if (!string.Equals(current.Trim(), cleaned, StringComparison.Ordinal))
             {
@@ -573,22 +571,17 @@ public class CPHInline
                 return false;
             }
 
-            var remoteItems = remote.Replace("\r\n", "\n").Replace("\r", "\n")
-                .Split(new[] { '\n', '|' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(s => s.Trim())
-                .Where(s => s.Length > 0)
-                .ToList();
-
+            var remoteItems = remote.Replace("\r\n", "\n").Replace("\r", "\n").Split(new[] { '\n', '|' }, StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
             string current = "";
-            try { current = CPH.GetGlobalVar<string>(globalVarKey, true) ?? ""; } catch { }
+            try
+            {
+                current = CPH.GetGlobalVar<string>(globalVarKey, true) ?? "";
+            }
+            catch
+            {
+            }
 
-            var currentItems = (string.IsNullOrWhiteSpace(current) || current == ClearedMarker)
-                ? new List<string>()
-                : current.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries)
-                    .Select(s => s.Trim())
-                    .Where(s => s.Length > 0)
-                    .ToList();
-
+            var currentItems = (string.IsNullOrWhiteSpace(current) || current == ClearedMarker) ? new List<string>() : current.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
             var merged = new List<string>(currentItems);
             int added = 0;
             foreach (var item in remoteItems)
@@ -601,7 +594,6 @@ public class CPHInline
             }
 
             string mergedStr = merged.Count == 0 ? "" : string.Join("|", merged);
-
             if (added > 0 || !string.Equals(current.Trim(), mergedStr, StringComparison.Ordinal))
             {
                 CPH.SetGlobalVar(globalVarKey, mergedStr, true);
@@ -625,25 +617,21 @@ public class CPHInline
         }
     }
 
-   private void SyncAllFilterLists()
-{
-    LogToFile("[SYNC] 🔄 Синхронізація фільтр-списків з GitHub...");
-
-    bool okRu  = SyncRemoteList(BlokRussianUrl,      "Hello_russianLetters",  "RussianLetters");
-    bool okIw  = SyncRemoteList(IgnorSlovaUrl,       "Hello_ignoreWords",     "IgnoreWords");
-    bool okIs  = SyncRemoteList(IgnorSymvolUrl,      "Hello_ignoreSymbols",   "IgnoreSymbols");
-    bool okBd  = SyncRemoteListMerge(ZablokovaniDomenUrl, "Hello_ignoreDomains",  "BlockedDomains");
-    bool okAd  = SyncRemoteListMerge(DozvilDomenUrl,      "Hello_allowedDomains", "AllowedDomains");
-
-    CPH.SetGlobalVar("Hello_lastFilterSyncTime", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), true);
-
-    bool allOk = okRu && okIw && okIs && okBd && okAd;
-    CPH.SetGlobalVar("Hello_filterSyncStatus", allOk ? "Синхронізовано успішно" : "Синхронізовано з помилками", true);
-
-    LogToFile($"[SYNC] {(allOk ? "✅ Синхронізацію завершено успішно" : "⚠ Синхронізацію завершено з помилками")}");
-    CPH.LogInfo($"[HELLO SYNC] {(allOk ? "Фільтр-списки синхронізовано з GitHub" : "Синхронізація фільтр-списків завершилась з помилками")}");
-}
-
+    private void SyncAllFilterLists()
+    {
+        LogToFile("[SYNC] 🔄 Синхронізація фільтр-списків з GitHub...");
+        bool okRu = SyncRemoteList(BlokRussianUrl, "Hello_russianLetters", "RussianLetters");
+        bool okIw = SyncRemoteList(IgnorSlovaUrl, "Hello_ignoreWords", "IgnoreWords");
+        bool okIs = SyncRemoteList(IgnorSymvolUrl, "Hello_ignoreSymbols", "IgnoreSymbols");
+        bool okBd = SyncRemoteListMerge(ZablokovaniDomenUrl, "Hello_ignoreDomains", "BlockedDomains");
+        bool okAd = SyncRemoteListMerge(DozvilDomenUrl, "Hello_allowedDomains", "AllowedDomains");
+        bool okBt = SyncRemoteListMerge(Hello_excludedBots, "Hello_excludedBots", "Boty");
+        CPH.SetGlobalVar("Hello_lastFilterSyncTime", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), true);
+        bool allOk = okRu && okIw && okIs && okBd && okAd && okBt;
+        CPH.SetGlobalVar("Hello_filterSyncStatus", allOk ? "Синхронізовано успішно" : "Синхронізовано з помилками", true);
+        LogToFile($"[SYNC] {(allOk ? "✅ Синхронізацію завершено успішно" : "⚠ Синхронізацію завершено з помилками")}");
+        CPH.LogInfo($"[HELLO SYNC] {(allOk ? "Фільтр-списки синхронізовано з GitHub" : "Синхронізація фільтр-списків завершилась з помилками")}");
+    }
 
     public bool Execute()
     {
@@ -653,14 +641,14 @@ public class CPHInline
             {
                 if (args != null)
                 {
-                    string allArgs = string.Join(" | ", args
-                        .Where(kv => kv.Value != null)
-                        .Select(kv => $"{kv.Key}={kv.Value}"));
+                    string allArgs = string.Join(" | ", args.Where(kv => kv.Value != null).Select(kv => $"{kv.Key}={kv.Value}"));
                     if (allArgs.Length > 0)
                         LogToFile($"[ARGS] {allArgs}");
                 }
             }
-            catch { }
+            catch
+            {
+            }
 
             if (IsStreamStartEvent())
             {
@@ -676,7 +664,6 @@ public class CPHInline
                 return true;
             }
 
-           
             string updateTriggerId = GetArg("triggerId");
             if (updateTriggerId == "UPDATE-CHECK-TRIGGER-ID")
             {
@@ -684,7 +671,6 @@ public class CPHInline
                 return true;
             }
 
-           
             string syncTriggerId = GetArg("triggerId");
             if (syncTriggerId == "SYNC-FILTERS-TRIGGER-ID")
             {
@@ -692,22 +678,17 @@ public class CPHInline
                 return true;
             }
 
-            string user = GetArg("user")
-                ?? GetArg("userName")
-                ?? GetArg("displayName")
-                ?? GetArg("redeemer")
-                ?? GetArg("targetUser")
-                ?? GetArg("raidUser")
-                ?? GetArg("from_broadcaster_user_name")
-                ?? "друже";
+            string user = GetArg("user") ?? GetArg("userName") ?? GetArg("displayName") ?? GetArg("redeemer") ?? GetArg("targetUser") ?? GetArg("raidUser") ?? GetArg("from_broadcaster_user_name") ?? "друже";
+            if (string.IsNullOrWhiteSpace(user))
+            {
+                LogToFile("[SKIP] Порожнє ім'я");
+                return true;
+            }
 
-            if (string.IsNullOrWhiteSpace(user)) { LogToFile("[SKIP] Порожнє ім'я"); return true; }
             user = user.Trim();
-            string key    = user.ToLowerInvariant();
+            string key = user.ToLowerInvariant();
             string source = GetArg("__source") ?? "невідомо";
-
             LogToFile($"[EXECUTE START] {user} | greetedList: '{CPH.GetGlobalVar<string>("Hello_greetedList", true) ?? "null"}'");
-
             // ── ВАЖЛИВО: streamJustStarted більше не скипає глядача повністю ──
             // Раніше при одночасному напливі глядачів одразу після старту стріму
             // цей прапорець міг призвести до того, що частину людей "з'їдало" —
@@ -729,7 +710,7 @@ public class CPHInline
                         LogToFile("[STREAM FLAG] Очищення виконано один раз, прапорець знято");
                     }
                 }
-                // НЕ повертаємо true тут — глядач іде далі й буде привітаний нижче.
+            // НЕ повертаємо true тут — глядач іде далі й буде привітаний нижче.
             }
 
             string triggerId = GetArg("triggerId");
@@ -744,38 +725,32 @@ public class CPHInline
                 return true;
             }
 
-            string userId   = GetArg("userId")   ?? GetArg("user_id")          ?? "";
+            string userId = GetArg("userId") ?? GetArg("user_id") ?? "";
             string bcUserId = GetArg("broadcaster_user_id") ?? GetArg("broadcasterUserId") ?? "";
-            string bcLogin  = GetArg("broadcaster_user_login") ?? GetArg("broadcasterUserLogin") ?? "";
+            string bcLogin = GetArg("broadcaster_user_login") ?? GetArg("broadcasterUserLogin") ?? "";
+            if (!string.IsNullOrWhiteSpace(userId) && !string.IsNullOrWhiteSpace(bcUserId) && userId.Equals(bcUserId, StringComparison.OrdinalIgnoreCase))
+            {
+                LogToFile($"[SKIP] {user} | Broadcaster (userId)");
+                return true;
+            }
 
-            if (!string.IsNullOrWhiteSpace(userId) && !string.IsNullOrWhiteSpace(bcUserId)
-                && userId.Equals(bcUserId, StringComparison.OrdinalIgnoreCase))
-            { LogToFile($"[SKIP] {user} | Broadcaster (userId)"); return true; }
+            if (!string.IsNullOrWhiteSpace(bcLogin) && key.Equals(bcLogin.Trim().ToLowerInvariant()))
+            {
+                LogToFile($"[SKIP] {user} | Broadcaster (login)");
+                return true;
+            }
 
-            if (!string.IsNullOrWhiteSpace(bcLogin)
-                && key.Equals(bcLogin.Trim().ToLowerInvariant()))
-            { LogToFile($"[SKIP] {user} | Broadcaster (login)"); return true; }
+            if (IsFullyExcluded(key))
+            {
+                LogToFile($"[SKIP] {user} | Hello_excludedBots");
+                return true;
+            }
 
-            if (IsFullyExcluded(key)) { LogToFile($"[SKIP] {user} | excludedUsers"); return true; }
-
-            bool isReward = !string.IsNullOrEmpty(GetArg("rewardId"))
-                || source.IndexOf("reward",      StringComparison.OrdinalIgnoreCase) >= 0
-                || source.IndexOf("redemption",  StringComparison.OrdinalIgnoreCase) >= 0;
-
-            string firstRaw = (GetArg("firstMessage")
-                ?? GetArg("isFirstMessage")
-                ?? GetArg("first_message")
-                ?? "false").Trim().ToLowerInvariant();
-
-            bool isFirstMessage = firstRaw == "true" || firstRaw == "1"
-                || source.IndexOf("first", StringComparison.OrdinalIgnoreCase) >= 0
-                || source.IndexOf("words", StringComparison.OrdinalIgnoreCase) >= 0;
-
-            bool isRaid     = !string.IsNullOrEmpty(GetArg("viewers"))
-                || source.IndexOf("raid", StringComparison.OrdinalIgnoreCase) >= 0;
-
+            bool isReward = !string.IsNullOrEmpty(GetArg("rewardId")) || source.IndexOf("reward", StringComparison.OrdinalIgnoreCase) >= 0 || source.IndexOf("redemption", StringComparison.OrdinalIgnoreCase) >= 0;
+            string firstRaw = (GetArg("firstMessage") ?? GetArg("isFirstMessage") ?? GetArg("first_message") ?? "false").Trim().ToLowerInvariant();
+            bool isFirstMessage = firstRaw == "true" || firstRaw == "1" || source.IndexOf("first", StringComparison.OrdinalIgnoreCase) >= 0 || source.IndexOf("words", StringComparison.OrdinalIgnoreCase) >= 0;
+            bool isRaid = !string.IsNullOrEmpty(GetArg("viewers")) || source.IndexOf("raid", StringComparison.OrdinalIgnoreCase) >= 0;
             bool isTestMode = (GetArg("__test") ?? "").Equals("true", StringComparison.OrdinalIgnoreCase);
-
             // ── Атомарна перевірка "вже привітаний" + резервування місця ──
             // Раніше перевірка greeted.Contains(key) і подальший greeted.Add(key)
             // були рознесені по коду з обробкою повідомлення між ними.
@@ -785,61 +760,69 @@ public class CPHInline
             bool alreadyGreetedOrQueued;
             lock (queueLock)
             {
-                var greetedNow  = GetGreetedSet();
-                var pendingNow  = GetPendingQueue();
-                alreadyGreetedOrQueued = greetedNow.Contains(key)
-                    || pendingNow.Any(p => p.Equals(key, StringComparison.OrdinalIgnoreCase));
+                var greetedNow = GetGreetedSet();
+                var pendingNow = GetPendingQueue();
+                alreadyGreetedOrQueued = greetedNow.Contains(key) || pendingNow.Any(p => p.Equals(key, StringComparison.OrdinalIgnoreCase));
             }
+
             if (alreadyGreetedOrQueued)
             {
                 LogToFile($"[SKIP] {user} | Вже привітаний або вже в черзі");
                 return true;
             }
 
-            string message = (GetArg("message")
-                ?? GetArg("input")
-                ?? GetArg("rawInput")
-                ?? GetArg("rewardInput")
-                ?? "").Trim();
-
+            string message = (GetArg("message") ?? GetArg("input") ?? GetArg("rawInput") ?? GetArg("rewardInput") ?? "").Trim();
             LogToFile($"[MESSAGE] {user} | message='{message}' | isReward={isReward} | isFirstMessage={isFirstMessage} | isRaid={isRaid}");
-
             if (message.Length > 0)
             {
-                if (ContainsIgnoreWord(message))    { LogToFile($"[SKIP] {user} | Ігнор-слово");       return true; }
-                if (ContainsIgnoreSymbol(message))  { LogToFile($"[SKIP] {user} | Ігнор-символ");      return true; }
-                if (ContainsRussianLetter(message)) { LogToFile($"[SKIP] {user} | Кирилиця");          return true; }
-                if (ContainsBadDomain(message))     { LogToFile($"[SKIP] {user} | Заборонений домен"); return true; }
+                if (ContainsIgnoreWord(message))
+                {
+                    LogToFile($"[SKIP] {user} | Ігнор-слово");
+                    return true;
+                }
+
+                if (ContainsIgnoreSymbol(message))
+                {
+                    LogToFile($"[SKIP] {user} | Ігнор-символ");
+                    return true;
+                }
+
+                if (ContainsRussianLetter(message))
+                {
+                    LogToFile($"[SKIP] {user} | Кирилиця");
+                    return true;
+                }
+
+                if (ContainsBadDomain(message))
+                {
+                    LogToFile($"[SKIP] {user} | Заборонений домен");
+                    return true;
+                }
             }
 
             bool shouldGreet = isReward || isFirstMessage || isRaid || isTestMode;
-            if (!shouldGreet) { LogToFile($"[SKIP] {user} | Не підходить під тип"); return true; }
+            if (!shouldGreet)
+            {
+                LogToFile($"[SKIP] {user} | Не підходить під тип");
+                return true;
+            }
 
             LogToFile($"[GREET] {user} | {(isReward ? "Нагорода" : isFirstMessage ? "Перше повідомлення" : isRaid ? "Рейд" : "Тест")}");
-
-            string viewers       = isRaid ? (GetArg("viewers") ?? "багатьох") : null;
-            bool   onlyMediaMode = IsOnlyMedia(key);
-            bool   noSoundMode   = !onlyMediaMode && IsIgnoredMedia(key);
-            bool   sendText      = !onlyMediaMode;
-            string greetingText  = sendText ? GetGreetingText(user, viewers, isRaid) : null;
-            bool   playSound     = onlyMediaMode || !noSoundMode;
-
+            string viewers = isRaid ? (GetArg("viewers") ?? "багатьох") : null;
+            bool onlyMediaMode = IsOnlyMedia(key);
+            bool noSoundMode = !onlyMediaMode && IsIgnoredMedia(key);
+            bool sendText = !onlyMediaMode;
+            string greetingText = sendText ? GetGreetingText(user, viewers, isRaid) : null;
+            bool playSound = onlyMediaMode || !noSoundMode;
             string userSoundPath = GetUserSound(key);
             LogToFile($"[USER SOUND] {user} | path='{userSoundPath ?? "default"}'");
-
-            string profileImageUrl = GetArg("targetUserProfileImageUrl")
-                ?? GetArg("userProfileImageUrl")
-                ?? GetArg("profileImageUrl")
-                ?? GetArg("profile_image_url");
-
+            string profileImageUrl = GetArg("targetUserProfileImageUrl") ?? GetArg("userProfileImageUrl") ?? GetArg("profileImageUrl") ?? GetArg("profile_image_url");
             LogToFile($"[PROFILE URL] {user} | url='{profileImageUrl ?? "null"}'");
-
-            string capturedUser       = user;
-            bool   capturedPlaySound  = playSound;
+            string capturedUser = user;
+            bool capturedPlaySound = playSound;
             string capturedProfileUrl = profileImageUrl;
-            string capturedKey        = key;
-            string capturedSoundPath  = userSoundPath;
-
+            string capturedKey = key;
+            string capturedSoundPath = userSoundPath;
             Action mediaAction = () =>
             {
                 // Позначаємо як привітаного ПЕРЕД відтворенням, щоб дублікат-подія
@@ -855,8 +838,15 @@ public class CPHInline
 
                 if (sendText && !string.IsNullOrEmpty(greetingText))
                 {
-                    try { CPH.SendMessage(greetingText, true); LogToFile($"[TEXT] {capturedUser} | Відправлено"); }
-                    catch (Exception ex) { LogToFile($"[TEXT ERROR] {capturedUser} | {ex.Message}"); }
+                    try
+                    {
+                        CPH.SendMessage(greetingText, true);
+                        LogToFile($"[TEXT] {capturedUser} | Відправлено");
+                    }
+                    catch (Exception ex)
+                    {
+                        LogToFile($"[TEXT ERROR] {capturedUser} | {ex.Message}");
+                    }
                 }
 
                 try
@@ -864,11 +854,14 @@ public class CPHInline
                     PlayMedia(capturedUser, capturedPlaySound, capturedProfileUrl, capturedSoundPath);
                     LogToFile($"[MEDIA] {capturedUser} | Відтворено");
                 }
-                catch (Exception ex) { LogToFile($"[MEDIA ERROR] {capturedUser} | {ex.Message}"); }
+                catch (Exception ex)
+                {
+                    LogToFile($"[MEDIA ERROR] {capturedUser} | {ex.Message}");
+                }
 
                 int delaySec = GetIntSetting("queueDelaySec");
-                if (delaySec > 0) CPH.Wait(delaySec * 1000);
-
+                if (delaySec > 0)
+                    CPH.Wait(delaySec * 1000);
                 lock (queueLock)
                 {
                     var pending = GetPendingQueue();
@@ -878,7 +871,6 @@ public class CPHInline
 
                 LogToFile($"[QUEUE DONE] {capturedUser} | Видалено з pendingQueue, привітання завершено");
             };
-
             // ── СУВОРА FIFO-ЧЕРГА: жодного "пріоритетного" перевставляння наперед. ──
             // Порядок додавання в pendingQueue/greetQueue = порядок реального виклику
             // Execute() для кожного глядача, а lock серіалізує доступ, тому навіть
@@ -910,9 +902,9 @@ public class CPHInline
                     shouldStart = true;
                 }
             }
+
             if (shouldStart)
                 ThreadPool.QueueUserWorkItem(_ => ProcessQueue());
-
             return true;
         }
         catch (Exception ex)
@@ -941,7 +933,10 @@ public class CPHInline
 
             if (nextAction != null)
             {
-                try { nextAction(); }
+                try
+                {
+                    nextAction();
+                }
                 catch (Exception ex)
                 {
                     LogToFile($"[QUEUE ERROR] {ex.Message}");
@@ -962,6 +957,7 @@ public class CPHInline
                 needsRestart = true;
             }
         }
+
         if (needsRestart)
             ProcessQueue();
     }
@@ -969,21 +965,16 @@ public class CPHInline
     private List<string> GetPendingQueue()
     {
         string str = GetSetting("pendingQueue");
-        if (string.IsNullOrWhiteSpace(str) || str == ClearedMarker) return new List<string>();
-        return str.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries)
-                  .Select(s => s.Trim())
-                  .Where(s => s.Length > 0)
-                  .ToList();
+        if (string.IsNullOrWhiteSpace(str) || str == ClearedMarker)
+            return new List<string>();
+        return str.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
     }
 
     private void SavePendingQueue(List<string> list)
     {
-        string str = (list == null || list.Count == 0)
-            ? ClearedMarker
-            : string.Join("|", list);
+        string str = (list == null || list.Count == 0) ? ClearedMarker : string.Join("|", list);
         CPH.SetGlobalVar("Hello_pendingQueue", str, true);
     }
-
 
     private string GetUserSound(string userKey)
     {
@@ -992,16 +983,14 @@ public class CPHInline
             string raw = GetSetting("userSounds");
             if (string.IsNullOrWhiteSpace(raw) || raw == ClearedMarker)
                 return null;
-
             var lines = raw.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (var line in lines)
             {
                 int sep = line.IndexOf('|');
-                if (sep <= 0) continue;
-
+                if (sep <= 0)
+                    continue;
                 string nick = line.Substring(0, sep).Trim().ToLowerInvariant();
                 string path = line.Substring(sep + 1).Trim();
-
                 if (nick == userKey && !string.IsNullOrEmpty(path))
                     return path;
             }
@@ -1010,19 +999,14 @@ public class CPHInline
         {
             LogToFile($"[USER SOUND ERROR] {ex.Message}");
         }
+
         return null;
     }
 
-
     private string GetGreetingText(string user, string viewers = null, bool isRaid = false)
     {
-        var    list = Split(GetSetting("greetings"));
-        string text = list.Count == 0
-            ? (isRaid
-                ? "Ласкаво просимо до рейду від %userName% з %viewers% глядачами! "
-                : "Привіт, %userName%! Ласкаво просимо! ")
-            : PickRandom(list);
-
+        var list = Split(GetSetting("greetings"));
+        string text = list.Count == 0 ? (isRaid ? "Ласкаво просимо до рейду від %userName% з %viewers% глядачами! " : "Привіт, %userName%! Ласкаво просимо! ") : PickRandom(list);
         text = text.Replace("%userName%", user);
         if (!string.IsNullOrEmpty(viewers))
             text = text.Replace("%viewers%", viewers).Replace("%count%", viewers);
@@ -1031,50 +1015,67 @@ public class CPHInline
 
     private void PlayMedia(string userName, bool playSound = true, string profileImageUrl = null, string userSoundOverride = null)
     {
-        var    gifs            = Split(GetSetting("gifUrls"));
-        string soundPath       = (!string.IsNullOrEmpty(userSoundOverride) && File.Exists(userSoundOverride))
-                                    ? userSoundOverride
-                                    : GetSetting("soundPath");
-        int    gifDuration     = GetIntSetting("gifDuration");
-        int    soundDelay      = GetIntSetting("soundDelayMs");
-        int    profileDuration = GetIntSetting("profileDuration");
-        string scene           = GetSetting("obsScene");
-        string gifSource       = GetSetting("obsSource");
-        string profileSource   = GetSetting("obsSourceProfile");
-        string textSource      = GetSetting("obsTextSource");
-        string textTemplate    = GetSetting("textTemplate");
-        float  volume          = GetFloatSetting("soundVolume");
-
-        bool hasGif     = gifs.Count > 0 && !string.IsNullOrWhiteSpace(scene) && !string.IsNullOrWhiteSpace(gifSource) && gifDuration > 0;
+        var gifs = Split(GetSetting("gifUrls"));
+        string soundPath = (!string.IsNullOrEmpty(userSoundOverride) && File.Exists(userSoundOverride)) ? userSoundOverride : GetSetting("soundPath");
+        int gifDuration = GetIntSetting("gifDuration");
+        int soundDelay = GetIntSetting("soundDelayMs");
+        int profileDuration = GetIntSetting("profileDuration");
+        string scene = GetSetting("obsScene");
+        string gifSource = GetSetting("obsSource");
+        string profileSource = GetSetting("obsSourceProfile");
+        string textSource = GetSetting("obsTextSource");
+        string textTemplate = GetSetting("textTemplate");
+        float volume = GetFloatSetting("soundVolume");
+        bool hasGif = gifs.Count > 0 && !string.IsNullOrWhiteSpace(scene) && !string.IsNullOrWhiteSpace(gifSource) && gifDuration > 0;
         bool hasProfile = !string.IsNullOrWhiteSpace(profileImageUrl) && !string.IsNullOrWhiteSpace(scene) && !string.IsNullOrWhiteSpace(profileSource);
-        bool hasText    = !string.IsNullOrWhiteSpace(scene) && !string.IsNullOrWhiteSpace(textSource) && !string.IsNullOrWhiteSpace(textTemplate) && !string.IsNullOrWhiteSpace(userName);
-        bool hasSound   = playSound && !string.IsNullOrEmpty(soundPath) && File.Exists(soundPath);
-
+        bool hasText = !string.IsNullOrWhiteSpace(scene) && !string.IsNullOrWhiteSpace(textSource) && !string.IsNullOrWhiteSpace(textTemplate) && !string.IsNullOrWhiteSpace(userName);
+        bool hasSound = playSound && !string.IsNullOrEmpty(soundPath) && File.Exists(soundPath);
         int animDuration = gifDuration;
         if (!hasGif && (hasProfile || hasText))
             animDuration = profileDuration > 0 ? profileDuration : 5000;
         else if (hasProfile && profileDuration > 0)
             animDuration = Math.Max(gifDuration, profileDuration);
+        if (hasProfile)
+        {
+            CPH.ObsSetBrowserSource(scene, profileSource, profileImageUrl);
+            CPH.ObsShowSource(scene, profileSource);
+        }
 
-        if (hasProfile) { CPH.ObsSetBrowserSource(scene, profileSource, profileImageUrl); CPH.ObsShowSource(scene, profileSource); }
-        if (hasGif)     { string gif = PickRandom(gifs); CPH.ObsSetBrowserSource(scene, gifSource, gif); CPH.ObsShowSource(scene, gifSource); }
-        if (hasText)    { string finalText = textTemplate.Replace("%userName%", userName); CPH.ObsSetGdiText(scene, textSource, finalText); CPH.ObsShowSource(scene, textSource); }
+        if (hasGif)
+        {
+            string gif = PickRandom(gifs);
+            CPH.ObsSetBrowserSource(scene, gifSource, gif);
+            CPH.ObsShowSource(scene, gifSource);
+        }
+
+        if (hasText)
+        {
+            string finalText = textTemplate.Replace("%userName%", userName);
+            CPH.ObsSetGdiText(scene, textSource, finalText);
+            CPH.ObsShowSource(scene, textSource);
+        }
 
         if (hasGif || hasProfile || hasText || hasSound)
         {
-            if (soundDelay > 0) CPH.Wait(soundDelay);
-            if (hasSound) CPH.PlaySound(soundPath, volume);
+            if (soundDelay > 0)
+                CPH.Wait(soundDelay);
+            if (hasSound)
+                CPH.PlaySound(soundPath, volume);
             int remaining = animDuration - Math.Max(0, soundDelay);
-            if (remaining > 0) CPH.Wait(remaining);
+            if (remaining > 0)
+                CPH.Wait(remaining);
         }
         else if (hasSound)
         {
             CPH.PlaySound(soundPath, volume);
         }
 
-        if (hasGif)     CPH.ObsHideSource(scene, gifSource);
-        if (hasProfile) CPH.ObsHideSource(scene, profileSource);
-        if (hasText)    CPH.ObsHideSource(scene, textSource);
+        if (hasGif)
+            CPH.ObsHideSource(scene, gifSource);
+        if (hasProfile)
+            CPH.ObsHideSource(scene, profileSource);
+        if (hasText)
+            CPH.ObsHideSource(scene, textSource);
     }
 
     private HashSet<string> GetGreetedSet()
@@ -1082,42 +1083,33 @@ public class CPHInline
         string str = GetSetting("greetedList");
         if (string.IsNullOrWhiteSpace(str) || str == ClearedMarker)
             return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var part in str.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries))
         {
             var t = part.Trim().ToLowerInvariant();
-            if (!string.IsNullOrEmpty(t)) set.Add(t);
+            if (!string.IsNullOrEmpty(t))
+                set.Add(t);
         }
+
         return set;
     }
 
     private void SaveGreetedSet(HashSet<string> set)
     {
-        string str = (set == null || set.Count == 0)
-            ? ClearedMarker
-            : string.Join("|", set);
+        string str = (set == null || set.Count == 0) ? ClearedMarker : string.Join("|", set);
         CPH.SetGlobalVar("Hello_greetedList", str, true);
     }
-
 
     private HashSet<string> GetIgnoreSet(string k)
     {
         var list = Split(GetSetting(k));
-        return new HashSet<string>(
-            list.Select(s => s.Trim().ToLowerInvariant()).Where(s => !string.IsNullOrEmpty(s)),
-            StringComparer.OrdinalIgnoreCase);
+        return new HashSet<string>(list.Select(s => s.Trim().ToLowerInvariant()).Where(s => !string.IsNullOrEmpty(s)), StringComparer.OrdinalIgnoreCase);
     }
 
-    private bool IsFullyExcluded(string key) => GetIgnoreSet("excludedUsers").Contains(key);
-    private bool IsOnlyMedia(string key)      => GetIgnoreSet("onlyMediaUsers").Contains(key);
-    private bool IsIgnoredMedia(string key)   => GetIgnoreSet("ignoreMediaUsers").Contains(key);
-
-    private string GetArg(string k)
-        => args != null && args.ContainsKey(k) && args[k] != null
-            ? args[k].ToString().Trim()
-            : null;
-
+    private bool IsFullyExcluded(string key) => GetIgnoreSet("Hello_excludedBots").Contains(key) || GetIgnoreSet("Hello_excludedBots").Contains(key);
+    private bool IsOnlyMedia(string key) => GetIgnoreSet("onlyMediaUsers").Contains(key);
+    private bool IsIgnoredMedia(string key) => GetIgnoreSet("ignoreMediaUsers").Contains(key);
+    private string GetArg(string k) => args != null && args.ContainsKey(k) && args[k] != null ? args[k].ToString().Trim() : null;
     private string GetSetting(string key)
     {
         try
@@ -1144,28 +1136,18 @@ public class CPHInline
         string s = GetSetting(key);
         if (float.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out float v))
         {
-            if (v > 1f) v = v / 100f;
+            if (v > 1f)
+                v = v / 100f;
             return v < 0f ? 0f : (v > 1f ? 1f : v);
         }
+
         return 0f;
     }
 
-    private List<string> Split(string s)
-        => string.IsNullOrWhiteSpace(s)
-            ? new List<string>()
-            : s.Split(new[] { '|', '\\' }, StringSplitOptions.RemoveEmptyEntries)
-               .Select(x => x.Trim())
-               .Where(x => x.Length > 0)
-               .ToList();
-
+    private List<string> Split(string s) => string.IsNullOrWhiteSpace(s) ? new List<string>() : s.Split(new[] { '|', '\\' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).Where(x => x.Length > 0).ToList();
     private string PickRandom(List<string> l) => l.Count > 0 ? l[rnd.Next(l.Count)] : "";
-
-    private bool ContainsIgnoreWord(string t)
-        => Split(GetSetting("ignoreWords")).Any(w => t.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0);
-
-    private bool ContainsIgnoreSymbol(string t)
-        => Split(GetSetting("ignoreSymbols")).Any(s => t.Contains(s));
-
+    private bool ContainsIgnoreWord(string t) => Split(GetSetting("ignoreWords")).Any(w => t.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0);
+    private bool ContainsIgnoreSymbol(string t) => Split(GetSetting("ignoreSymbols")).Any(s => t.Contains(s));
     private bool ContainsRussianLetter(string t)
     {
         string letters = GetSetting("russianLetters");
@@ -1173,30 +1155,25 @@ public class CPHInline
     }
 
     private bool ContainsBadDomain(string t)
-{
-    var bad  = Split(GetSetting("ignoreDomains"));
-    var good = Split(GetSetting("allowedDomains"));
-    if (bad.Count == 0 || string.IsNullOrWhiteSpace(t)) return false;
-
-    var matches = UrlRegex.Matches(t);
-    foreach (Match m in matches)
     {
-        string h = ExtractHost(m.Value);
-        if (string.IsNullOrEmpty(h)) continue;
+        var bad = Split(GetSetting("ignoreDomains"));
+        var good = Split(GetSetting("allowedDomains"));
+        if (bad.Count == 0 || string.IsNullOrWhiteSpace(t))
+            return false;
+        var matches = UrlRegex.Matches(t);
+        foreach (Match m in matches)
+        {
+            string h = ExtractHost(m.Value);
+            if (string.IsNullOrEmpty(h))
+                continue;
+            if (good.Any(d => h.Equals(d.TrimStart('.'), StringComparison.OrdinalIgnoreCase) || h.EndsWith("." + d.TrimStart('.'), StringComparison.OrdinalIgnoreCase)))
+                continue;
+            if (bad.Any(d => h.Equals(d.TrimStart('.'), StringComparison.OrdinalIgnoreCase) || h.EndsWith("." + d.TrimStart('.'), StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
 
-        if (good.Any(d =>
-            h.Equals(d.TrimStart('.'), StringComparison.OrdinalIgnoreCase) ||
-            h.EndsWith("." + d.TrimStart('.'), StringComparison.OrdinalIgnoreCase)))
-            continue;
-
-        if (bad.Any(d =>
-            h.Equals(d.TrimStart('.'), StringComparison.OrdinalIgnoreCase) ||
-            h.EndsWith("." + d.TrimStart('.'), StringComparison.OrdinalIgnoreCase)))
-            return true;
+        return false;
     }
-
-    return false;
-}
 
     private string ExtractHost(string url)
     {
@@ -1204,103 +1181,147 @@ public class CPHInline
         {
             if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                 url = "http://" + url;
-            var    uri  = new Uri(url);
+            var uri = new Uri(url);
             string host = uri.Host;
             if (host.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
                 host = host.Substring(4);
             return host.ToLowerInvariant();
         }
-        catch { return null; }
+        catch
+        {
+            return null;
+        }
     }
 
     //                           GUI
     // =====================================================================
-
     private void OpenSettingsWindow()
     {
         var thread = new Thread(() =>
         {
-          
             Dispatcher.CurrentDispatcher.UnhandledException += (s, e) =>
             {
-                try { CPH.LogError("[HELLO GUI] Необроблений виняток у GUI: " + e.Exception); } catch { }
-                try { LogToFile("[GUI FATAL] " + e.Exception); } catch { }
+                try
+                {
+                    CPH.LogError("[HELLO GUI] Необроблений виняток у GUI: " + e.Exception);
+                }
+                catch
+                {
+                }
+
+                try
+                {
+                    LogToFile("[GUI FATAL] " + e.Exception);
+                }
+                catch
+                {
+                }
+
                 e.Handled = true;
             };
-
             var window = new Window
             {
-                Title  = "⚡  Hello — Налаштування привітань",
-                Width  = 1020, Height = 800,
-                MinWidth = 800, MinHeight = 560,
+                Title = "⚡  Hello — Налаштування привітань",
+                Width = 1020,
+                Height = 800,
+                MinWidth = 800,
+                MinHeight = 560,
                 WindowStartupLocation = WindowStartupLocation.CenterScreen,
-                Background  = new SolidColorBrush(BgDark),
-                Foreground  = new SolidColorBrush(TextPrimary),
-                FontFamily  = new FontFamily("Segoe UI"),
-                ResizeMode  = ResizeMode.CanResize
+                Background = new SolidColorBrush(BgDark),
+                Foreground = new SolidColorBrush(TextPrimary),
+                FontFamily = new FontFamily("Segoe UI"),
+                ResizeMode = ResizeMode.CanResize
             };
-
             try
             {
                 string wStr = GetSetting("windowWidth");
                 string hStr = GetSetting("windowHeight");
-                if (double.TryParse(wStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double w) && w > 0) window.Width  = w;
-                if (double.TryParse(hStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double h) && h > 0) window.Height = h;
+                if (double.TryParse(wStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double w) && w > 0)
+                    window.Width = w;
+                if (double.TryParse(hStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double h) && h > 0)
+                    window.Height = h;
             }
-            catch { }
+            catch
+            {
+            }
 
             window.SizeChanged += (s, e) =>
             {
                 try
                 {
-                    CPH.SetGlobalVar("Hello_windowWidth",  window.Width.ToString(CultureInfo.InvariantCulture),  true);
+                    CPH.SetGlobalVar("Hello_windowWidth", window.Width.ToString(CultureInfo.InvariantCulture), true);
                     CPH.SetGlobalVar("Hello_windowHeight", window.Height.ToString(CultureInfo.InvariantCulture), true);
                 }
-                catch { }
+                catch
+                {
+                }
             };
-
             var rootGrid = new Grid();
             rootGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             rootGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             rootGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
             // ── HEADER ──
             var header = new Border
             {
-                Background      = new LinearGradientBrush(Color.FromRgb(18, 9, 44), BgDark, 90),
-                Padding         = new Thickness(30, 18, 30, 18),
+                Background = new LinearGradientBrush(Color.FromRgb(18, 9, 44), BgDark, 90),
+                Padding = new Thickness(30, 18, 30, 18),
                 BorderThickness = new Thickness(0, 0, 0, 1),
-                BorderBrush     = new SolidColorBrush(Color.FromArgb(55, 150, 70, 255))
+                BorderBrush = new SolidColorBrush(Color.FromArgb(55, 150, 70, 255))
             };
-            var headerRow  = new StackPanel { Orientation = Orientation.Horizontal };
-            var logoGrid   = new Grid { Width = 42, Height = 42, Margin = new Thickness(0, 0, 14, 0) };
+            var headerRow = new StackPanel
+            {
+                Orientation = Orientation.Horizontal
+            };
+            var logoGrid = new Grid
+            {
+                Width = 42,
+                Height = 42,
+                Margin = new Thickness(0, 0, 14, 0)
+            };
             var logoCircle = new System.Windows.Shapes.Ellipse
             {
-                Width = 42, Height = 42,
-                Fill  = new RadialGradientBrush(AccentPurple, Color.FromRgb(50, 18, 110))
+                Width = 42,
+                Height = 42,
+                Fill = new RadialGradientBrush(AccentPurple, Color.FromRgb(50, 18, 110))
             };
-            logoCircle.Effect = new DropShadowEffect { Color = AccentPurple, BlurRadius = 16, ShadowDepth = 0, Opacity = 0.8 };
+            logoCircle.Effect = new DropShadowEffect
+            {
+                Color = AccentPurple,
+                BlurRadius = 16,
+                ShadowDepth = 0,
+                Opacity = 0.8
+            };
             var logoMark = new TextBlock
             {
-                Text = "👋", FontSize = 20,
+                Text = "👋",
+                FontSize = 20,
                 HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment   = VerticalAlignment.Center
+                VerticalAlignment = VerticalAlignment.Center
             };
             logoGrid.Children.Add(logoCircle);
             logoGrid.Children.Add(logoMark);
-
-            var headerText  = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            var headerText = new StackPanel
+            {
+                VerticalAlignment = VerticalAlignment.Center
+            };
             var headerTitle = new TextBlock
             {
-                Text       = "Hello — Привітання",
-                FontSize   = 20, FontWeight = FontWeights.Bold,
+                Text = "Hello — Привітання",
+                FontSize = 20,
+                FontWeight = FontWeights.Bold,
                 Foreground = new LinearGradientBrush(AccentPurple, AccentBlue, 0)
             };
-            headerTitle.Effect = new DropShadowEffect { Color = AccentPurple, BlurRadius = 12, ShadowDepth = 0, Opacity = 0.5 };
+            headerTitle.Effect = new DropShadowEffect
+            {
+                Color = AccentPurple,
+                BlurRadius = 12,
+                ShadowDepth = 0,
+                Opacity = 0.5
+            };
             var headerSub = new TextBlock
             {
-                Text       = "Автоматичні привітання глядачів у чаті",
-                FontSize   = 11,
+                Text = "Автоматичні привітання глядачів у чаті",
+                FontSize = 11,
                 Foreground = new SolidColorBrush(TextMuted)
             };
             headerText.Children.Add(headerTitle);
@@ -1309,119 +1330,132 @@ public class CPHInline
             headerRow.Children.Add(headerText);
             header.Child = headerRow;
             Grid.SetRow(header, 0);
-
             // ── TAB CONTROL ──
             var scrollStyle = new Style(typeof(ScrollViewer));
             scrollStyle.Setters.Add(new Setter(ScrollViewer.HorizontalScrollBarVisibilityProperty, ScrollBarVisibility.Disabled));
-            scrollStyle.Setters.Add(new Setter(ScrollViewer.VerticalScrollBarVisibilityProperty,   ScrollBarVisibility.Hidden));
-            scrollStyle.Setters.Add(new Setter(ScrollViewer.PanningModeProperty,                   PanningMode.VerticalOnly));
-
+            scrollStyle.Setters.Add(new Setter(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Hidden));
+            scrollStyle.Setters.Add(new Setter(ScrollViewer.PanningModeProperty, PanningMode.VerticalOnly));
             var tabControl = new TabControl
             {
-                Background      = new SolidColorBrush(BgCard),
+                Background = new SolidColorBrush(BgCard),
                 BorderThickness = new Thickness(0),
-                FontSize        = 13,
+                FontSize = 13,
                 TabStripPlacement = Dock.Top
             };
-
             var tabStyle = new Style(typeof(TabItem));
-            tabStyle.Setters.Add(new Setter(TabItem.BackgroundProperty,      Brushes.Transparent));
-            tabStyle.Setters.Add(new Setter(TabItem.ForegroundProperty,      new SolidColorBrush(TextMuted)));
+            tabStyle.Setters.Add(new Setter(TabItem.BackgroundProperty, Brushes.Transparent));
+            tabStyle.Setters.Add(new Setter(TabItem.ForegroundProperty, new SolidColorBrush(TextMuted)));
             tabStyle.Setters.Add(new Setter(TabItem.BorderThicknessProperty, new Thickness(0)));
-            tabStyle.Setters.Add(new Setter(TabItem.PaddingProperty,         new Thickness(22, 10, 22, 10)));
-
-            var hov = new Trigger { Property = TabItem.IsMouseOverProperty, Value = true };
+            tabStyle.Setters.Add(new Setter(TabItem.PaddingProperty, new Thickness(22, 10, 22, 10)));
+            var hov = new Trigger
+            {
+                Property = TabItem.IsMouseOverProperty,
+                Value = true
+            };
             hov.Setters.Add(new Setter(TabItem.BackgroundProperty, new SolidColorBrush(Color.FromArgb(40, 150, 70, 255))));
             hov.Setters.Add(new Setter(TabItem.ForegroundProperty, new SolidColorBrush(TextPrimary)));
             tabStyle.Triggers.Add(hov);
-
-            var sel = new Trigger { Property = TabItem.IsSelectedProperty, Value = true };
+            var sel = new Trigger
+            {
+                Property = TabItem.IsSelectedProperty,
+                Value = true
+            };
             sel.Setters.Add(new Setter(TabItem.BackgroundProperty, new SolidColorBrush(Color.FromArgb(80, 150, 70, 255))));
             sel.Setters.Add(new Setter(TabItem.ForegroundProperty, new SolidColorBrush(AccentPurple)));
             sel.Setters.Add(new Setter(TabItem.FontWeightProperty, FontWeights.Bold));
             tabStyle.Triggers.Add(sel);
             tabControl.ItemContainerStyle = tabStyle;
-
             tabControl.Items.Add(CreateScrollTab("👋  Привітання", scrollStyle, BuildGreetingsContent));
-            tabControl.Items.Add(CreateScrollTab("🎬  Медіа",      scrollStyle, BuildMediaContent));
-            tabControl.Items.Add(CreateScrollTab("🔍  Фільтри",    scrollStyle, BuildFiltersContent));
+            tabControl.Items.Add(CreateScrollTab("🎬  Медіа", scrollStyle, BuildMediaContent));
+            tabControl.Items.Add(CreateScrollTab("🔍  Фільтри", scrollStyle, BuildFiltersContent));
             tabControl.Items.Add(new TabItem { Header = "📋  Черга", Content = BuildQueueContent() });
-            tabControl.Items.Add(CreateScrollTab("❤  Про мене",   scrollStyle, p => BuildAboutContent(p, window)));
-
+            tabControl.Items.Add(CreateScrollTab("❤  Про мене", scrollStyle, p => BuildAboutContent(p, window)));
             Grid.SetRow(tabControl, 1);
-
             // ── FOOTER ──
             var footer = new Border
             {
-                Background      = new SolidColorBrush(Color.FromRgb(10, 6, 24)),
-                Padding         = new Thickness(28, 14, 28, 14),
+                Background = new SolidColorBrush(Color.FromRgb(10, 6, 24)),
+                Padding = new Thickness(28, 14, 28, 14),
                 BorderThickness = new Thickness(0, 1, 0, 0),
-                BorderBrush     = new SolidColorBrush(Color.FromArgb(40, 150, 70, 255))
+                BorderBrush = new SolidColorBrush(Color.FromArgb(40, 150, 70, 255))
             };
             var footerGrid = new Grid();
             footerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             footerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
             var footerInfo = new TextBlock
             {
-                Text       = "Зміни зберігаються автоматично при виході з поля та при «Зберегти»",
-                FontSize   = 11,
+                Text = "Зміни зберігаються автоматично при виході з поля та при «Зберегти»",
+                FontSize = 11,
                 Foreground = new SolidColorBrush(TextMuted),
                 VerticalAlignment = VerticalAlignment.Center
             };
-
-            var footerBtns = new StackPanel { Orientation = Orientation.Horizontal };
-            var saveBtn    = MakeFooterBtn("💾  Зберегти", AccentGreen);
-            var closeBtn   = MakeFooterBtn("✕  Закрити",   AccentRed);
-
+            var footerBtns = new StackPanel
+            {
+                Orientation = Orientation.Horizontal
+            };
+            var saveBtn = MakeFooterBtn("💾  Зберегти", AccentGreen);
+            var closeBtn = MakeFooterBtn("✕  Закрити", AccentRed);
             saveBtn.Click += (s, e) =>
             {
                 try
                 {
-                    saveBtn.Content    = "⏳  Збереження...";
+                    saveBtn.Content = "⏳  Збереження...";
                     saveBtn.Background = new SolidColorBrush(Color.FromRgb(30, 160, 80));
-                    saveBtn.IsEnabled  = false;
+                    saveBtn.IsEnabled = false;
                     SaveAllSettings(window);
-                    saveBtn.Content    = "✅  Збережено!";
+                    saveBtn.Content = "✅  Збережено!";
                     saveBtn.Background = new SolidColorBrush(Color.FromRgb(40, 200, 100));
                     CPH.LogInfo("[HELLO GUI] Налаштування збережено");
-
-                    var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+                    var timer = new DispatcherTimer
+                    {
+                        Interval = TimeSpan.FromMilliseconds(1500)
+                    };
                     timer.Tick += (ts, te) =>
                     {
                         timer.Stop();
-                        saveBtn.Content    = "💾  Зберегти";
+                        saveBtn.Content = "💾  Зберегти";
                         saveBtn.Background = new SolidColorBrush(AccentGreen);
-                        saveBtn.IsEnabled  = true;
+                        saveBtn.IsEnabled = true;
                     };
                     timer.Start();
                 }
                 catch (Exception ex)
                 {
-                    saveBtn.Content    = "❌  Помилка!";
+                    saveBtn.Content = "❌  Помилка!";
                     saveBtn.Background = new SolidColorBrush(AccentRed);
-                    saveBtn.IsEnabled  = true;
+                    saveBtn.IsEnabled = true;
                     CPH.LogWarn($"[HELLO GUI] {ex.Message}");
-
-                    var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2000) };
+                    var timer = new DispatcherTimer
+                    {
+                        Interval = TimeSpan.FromMilliseconds(2000)
+                    };
                     timer.Tick += (ts, te) =>
                     {
                         timer.Stop();
-                        saveBtn.Content    = "💾  Зберегти";
+                        saveBtn.Content = "💾  Зберегти";
                         saveBtn.Background = new SolidColorBrush(AccentGreen);
                     };
                     timer.Start();
                 }
             };
-
             closeBtn.Click += (s, e) =>
             {
-                try { window.Close(); }
-                catch { }
-                try { Dispatcher.CurrentDispatcher.InvokeShutdown(); }
-                catch { }
-            };
+                try
+                {
+                    window.Close();
+                }
+                catch
+                {
+                }
 
+                try
+                {
+                    Dispatcher.CurrentDispatcher.InvokeShutdown();
+                }
+                catch
+                {
+                }
+            };
             footerBtns.Children.Add(saveBtn);
             footerBtns.Children.Add(closeBtn);
             Grid.SetColumn(footerInfo, 0);
@@ -1430,18 +1464,20 @@ public class CPHInline
             footerGrid.Children.Add(footerBtns);
             footer.Child = footerGrid;
             Grid.SetRow(footer, 2);
-
             rootGrid.Children.Add(header);
             rootGrid.Children.Add(tabControl);
             rootGrid.Children.Add(footer);
             window.Content = rootGrid;
-
-            
             window.Closed += (s, e) =>
             {
-                try { Dispatcher.CurrentDispatcher.InvokeShutdown(); } catch { }
+                try
+                {
+                    Dispatcher.CurrentDispatcher.InvokeShutdown();
+                }
+                catch
+                {
+                }
             };
-
             window.Show();
             Dispatcher.Run();
         });
@@ -1451,91 +1487,156 @@ public class CPHInline
     }
 
     // ── GUI хелпери ──
-
     private TabItem CreateScrollTab(string header, Style scrollStyle, Action<StackPanel> builder)
     {
-        var panel = new StackPanel { Margin = new Thickness(28, 20, 28, 28) };
+        var panel = new StackPanel
+        {
+            Margin = new Thickness(28, 20, 28, 28)
+        };
         builder(panel);
         return new TabItem
         {
-            Header  = header,
-            Content = new ScrollViewer { Content = panel, Style = scrollStyle }
+            Header = header,
+            Content = new ScrollViewer
+            {
+                Content = panel,
+                Style = scrollStyle
+            }
         };
     }
 
     private Button MakeFooterBtn(string text, Color accent)
     {
-        var glow = new DropShadowEffect { Color = accent, BlurRadius = 12, ShadowDepth = 0, Opacity = 0.5 };
-        var btn  = new Button
+        var glow = new DropShadowEffect
         {
-            Content         = text,
-            Padding         = new Thickness(22, 9, 22, 9),
-            Margin          = new Thickness(8, 0, 0, 0),
-            Foreground      = Brushes.White,
-            FontSize        = 13,
-            FontWeight      = FontWeights.SemiBold,
+            Color = accent,
+            BlurRadius = 12,
+            ShadowDepth = 0,
+            Opacity = 0.5
+        };
+        var btn = new Button
+        {
+            Content = text,
+            Padding = new Thickness(22, 9, 22, 9),
+            Margin = new Thickness(8, 0, 0, 0),
+            Foreground = Brushes.White,
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
             BorderThickness = new Thickness(0),
-            Background      = new SolidColorBrush(accent),
-            Effect          = glow
+            Background = new SolidColorBrush(accent),
+            Effect = glow
         };
         var tpl = new ControlTemplate(typeof(Button));
-        var bf  = new FrameworkElementFactory(typeof(Border));
+        var bf = new FrameworkElementFactory(typeof(Border));
         bf.SetValue(Border.CornerRadiusProperty, new CornerRadius(7));
-        bf.SetValue(Border.BackgroundProperty,   new TemplateBindingExtension(Button.BackgroundProperty));
-        bf.SetValue(Border.PaddingProperty,      new TemplateBindingExtension(Button.PaddingProperty));
+        bf.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Button.BackgroundProperty));
+        bf.SetValue(Border.PaddingProperty, new TemplateBindingExtension(Button.PaddingProperty));
         var cp = new FrameworkElementFactory(typeof(ContentPresenter));
         cp.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-        cp.SetValue(ContentPresenter.VerticalAlignmentProperty,   VerticalAlignment.Center);
+        cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
         bf.AppendChild(cp);
         tpl.VisualTree = bf;
-        btn.Template   = tpl;
-
-        btn.MouseEnter                 += (s, e) => { btn.RenderTransformOrigin = new Point(0.5, 0.5); btn.RenderTransform = new ScaleTransform(1.05, 1.05); glow.BlurRadius = 20; glow.Opacity = 0.8; };
-        btn.MouseLeave                 += (s, e) => { btn.RenderTransform = new ScaleTransform(1.0, 1.0);   glow.BlurRadius = 12; glow.Opacity = 0.5; };
-        btn.PreviewMouseLeftButtonDown += (s, e) => { btn.RenderTransform = new ScaleTransform(0.95, 0.95); glow.BlurRadius = 6;  glow.Opacity = 0.3; };
-        btn.PreviewMouseLeftButtonUp   += (s, e) => { btn.RenderTransform = new ScaleTransform(1.05, 1.05); glow.BlurRadius = 20; glow.Opacity = 0.8; };
+        btn.Template = tpl;
+        btn.MouseEnter += (s, e) =>
+        {
+            btn.RenderTransformOrigin = new Point(0.5, 0.5);
+            btn.RenderTransform = new ScaleTransform(1.05, 1.05);
+            glow.BlurRadius = 20;
+            glow.Opacity = 0.8;
+        };
+        btn.MouseLeave += (s, e) =>
+        {
+            btn.RenderTransform = new ScaleTransform(1.0, 1.0);
+            glow.BlurRadius = 12;
+            glow.Opacity = 0.5;
+        };
+        btn.PreviewMouseLeftButtonDown += (s, e) =>
+        {
+            btn.RenderTransform = new ScaleTransform(0.95, 0.95);
+            glow.BlurRadius = 6;
+            glow.Opacity = 0.3;
+        };
+        btn.PreviewMouseLeftButtonUp += (s, e) =>
+        {
+            btn.RenderTransform = new ScaleTransform(1.05, 1.05);
+            glow.BlurRadius = 20;
+            glow.Opacity = 0.8;
+        };
         return btn;
     }
 
     private Button MakeActionBtn(string text, Color accent)
     {
-        var glow = new DropShadowEffect { Color = accent, BlurRadius = 10, ShadowDepth = 0, Opacity = 0.5 };
-        var btn  = new Button
+        var glow = new DropShadowEffect
         {
-            Content         = text,
-            Height          = 34,
-            Padding         = new Thickness(14, 0, 14, 0),
-            Margin          = new Thickness(0, 0, 8, 0),
-            Foreground      = Brushes.White,
-            FontSize        = 12,
-            FontWeight      = FontWeights.SemiBold,
+            Color = accent,
+            BlurRadius = 10,
+            ShadowDepth = 0,
+            Opacity = 0.5
+        };
+        var btn = new Button
+        {
+            Content = text,
+            Height = 34,
+            Padding = new Thickness(14, 0, 14, 0),
+            Margin = new Thickness(0, 0, 8, 0),
+            Foreground = Brushes.White,
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
             BorderThickness = new Thickness(0),
-            Background      = new SolidColorBrush(accent),
-            Effect          = glow
+            Background = new SolidColorBrush(accent),
+            Effect = glow
         };
         var tpl = new ControlTemplate(typeof(Button));
-        var bf  = new FrameworkElementFactory(typeof(Border));
+        var bf = new FrameworkElementFactory(typeof(Border));
         bf.SetValue(Border.CornerRadiusProperty, new CornerRadius(7));
-        bf.SetValue(Border.BackgroundProperty,   new TemplateBindingExtension(Button.BackgroundProperty));
-        bf.SetValue(Border.PaddingProperty,      new TemplateBindingExtension(Button.PaddingProperty));
+        bf.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Button.BackgroundProperty));
+        bf.SetValue(Border.PaddingProperty, new TemplateBindingExtension(Button.PaddingProperty));
         var cp = new FrameworkElementFactory(typeof(ContentPresenter));
         cp.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-        cp.SetValue(ContentPresenter.VerticalAlignmentProperty,   VerticalAlignment.Center);
+        cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
         bf.AppendChild(cp);
         tpl.VisualTree = bf;
-        btn.Template   = tpl;
-
-        btn.MouseEnter                 += (s, e) => { btn.RenderTransformOrigin = new Point(0.5, 0.5); btn.RenderTransform = new ScaleTransform(1.06, 1.06); glow.BlurRadius = 18; glow.Opacity = 0.8; };
-        btn.MouseLeave                 += (s, e) => { btn.RenderTransform = new ScaleTransform(1.0, 1.0);   glow.BlurRadius = 10; glow.Opacity = 0.5; };
-        btn.PreviewMouseLeftButtonDown += (s, e) => { btn.RenderTransform = new ScaleTransform(0.93, 0.93); glow.BlurRadius = 4;  glow.Opacity = 0.2; };
-        btn.PreviewMouseLeftButtonUp   += (s, e) => { btn.RenderTransform = new ScaleTransform(1.06, 1.06); glow.BlurRadius = 18; glow.Opacity = 0.8; };
+        btn.Template = tpl;
+        btn.MouseEnter += (s, e) =>
+        {
+            btn.RenderTransformOrigin = new Point(0.5, 0.5);
+            btn.RenderTransform = new ScaleTransform(1.06, 1.06);
+            glow.BlurRadius = 18;
+            glow.Opacity = 0.8;
+        };
+        btn.MouseLeave += (s, e) =>
+        {
+            btn.RenderTransform = new ScaleTransform(1.0, 1.0);
+            glow.BlurRadius = 10;
+            glow.Opacity = 0.5;
+        };
+        btn.PreviewMouseLeftButtonDown += (s, e) =>
+        {
+            btn.RenderTransform = new ScaleTransform(0.93, 0.93);
+            glow.BlurRadius = 4;
+            glow.Opacity = 0.2;
+        };
+        btn.PreviewMouseLeftButtonUp += (s, e) =>
+        {
+            btn.RenderTransform = new ScaleTransform(1.06, 1.06);
+            glow.BlurRadius = 18;
+            glow.Opacity = 0.8;
+        };
         return btn;
     }
 
     private void AddSectionTitle(StackPanel p, string icon, string title, string sub = "")
     {
-        var wrap = new StackPanel { Margin = new Thickness(0, 4, 0, 14) };
-        var row  = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
+        var wrap = new StackPanel
+        {
+            Margin = new Thickness(0, 4, 0, 14)
+        };
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 0, 0, 4)
+        };
         row.Children.Add(new TextBlock { Text = icon, FontSize = 18, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
         row.Children.Add(new TextBlock { Text = title, FontSize = 16, FontWeight = FontWeights.Bold, Foreground = new LinearGradientBrush(AccentPurple, AccentBlue, 0), VerticalAlignment = VerticalAlignment.Center });
         wrap.Children.Add(row);
@@ -1547,132 +1648,126 @@ public class CPHInline
 
     private void AddFieldLabel(StackPanel p, string text)
     {
-        p.Children.Add(new TextBlock
-        {
-            Text       = text,
-            FontSize   = 10, FontWeight = FontWeights.Bold,
-            Foreground = new SolidColorBrush(TextMuted),
-            Margin     = new Thickness(0, 0, 0, 5)
-        });
+        p.Children.Add(new TextBlock { Text = text, FontSize = 10, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(TextMuted), Margin = new Thickness(0, 0, 0, 5) });
     }
 
     private void AddHintBox(StackPanel p, string text)
     {
-        p.Children.Add(new Border
-        {
-            Background      = new SolidColorBrush(Color.FromArgb(18,  80, 160, 255)),
-            BorderBrush     = new SolidColorBrush(Color.FromArgb(50,  80, 160, 255)),
-            BorderThickness = new Thickness(1),
-            CornerRadius    = new CornerRadius(7),
-            Padding         = new Thickness(12, 8, 12, 8),
-            Margin          = new Thickness(0, 4, 0, 16),
-            Child = new TextBlock
-            {
-                Text        = text,
-                FontSize    = 11,
-                Foreground  = new SolidColorBrush(Color.FromArgb(180, 160, 200, 255)),
-                TextWrapping = TextWrapping.Wrap
-            }
-        });
+        p.Children.Add(new Border { Background = new SolidColorBrush(Color.FromArgb(18, 80, 160, 255)), BorderBrush = new SolidColorBrush(Color.FromArgb(50, 80, 160, 255)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(7), Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 4, 0, 16), Child = new TextBlock { Text = text, FontSize = 11, Foreground = new SolidColorBrush(Color.FromArgb(180, 160, 200, 255)), TextWrapping = TextWrapping.Wrap } });
     }
 
-private UIElement MakeReadOnlyField(string tag, int height = 70)
-{
-    string val = "";
-    try { val = CPH.GetGlobalVar<string>(tag, true) ?? ""; } catch { }
-
-    var tb = new TextBox
+    private UIElement MakeReadOnlyField(string tag, int height = 70)
     {
-        Tag        = tag,
-        Text       = val,
-        MinHeight  = height,
-        Padding    = new Thickness(12, 9, 12, 9),
-        Background = Brushes.Transparent,
-        Foreground = new SolidColorBrush(TextMuted),
-        BorderThickness = new Thickness(0),
-        FontSize   = 13, FontFamily = new FontFamily("Consolas"),
-        TextWrapping   = TextWrapping.Wrap,
-        AcceptsReturn  = true,
-        IsReadOnly     = true,
-        IsReadOnlyCaretVisible = false,
-        Focusable      = false,
-        Cursor         = Cursors.Arrow,
-        VerticalScrollBarVisibility   = ScrollBarVisibility.Auto,
-        HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-        HorizontalAlignment      = HorizontalAlignment.Stretch,
-        VerticalContentAlignment = VerticalAlignment.Top
-    };
-
-    var border = new Border
-    {
-        Child           = tb,
-        CornerRadius    = new CornerRadius(8),
-        Background      = new SolidColorBrush(Color.FromRgb(14, 14, 20)),
-        BorderBrush     = new SolidColorBrush(Color.FromArgb(90, 90, 90, 90)),
-        BorderThickness = new Thickness(2),
-        Margin          = new Thickness(0, 0, 0, 4),
-        HorizontalAlignment = HorizontalAlignment.Stretch
-    };
-
-   
-    var refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
-    refreshTimer.Tick += (s, e) =>
-    {
+        string val = "";
         try
         {
-            string latest = CPH.GetGlobalVar<string>(tag, true) ?? "";
-            if (latest != tb.Text) tb.Text = latest;
+            val = CPH.GetGlobalVar<string>(tag, true) ?? "";
         }
-        catch { }
-    };
-    tb.Unloaded += (s, e) => refreshTimer.Stop();
-    refreshTimer.Start();
+        catch
+        {
+        }
 
-    return border;
-}
+        var tb = new TextBox
+        {
+            Tag = tag,
+            Text = val,
+            MinHeight = height,
+            Padding = new Thickness(12, 9, 12, 9),
+            Background = Brushes.Transparent,
+            Foreground = new SolidColorBrush(TextMuted),
+            BorderThickness = new Thickness(0),
+            FontSize = 13,
+            FontFamily = new FontFamily("Consolas"),
+            TextWrapping = TextWrapping.Wrap,
+            AcceptsReturn = true,
+            IsReadOnly = true,
+            IsReadOnlyCaretVisible = false,
+            Focusable = false,
+            Cursor = Cursors.Arrow,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Top
+        };
+        var border = new Border
+        {
+            Child = tb,
+            CornerRadius = new CornerRadius(8),
+            Background = new SolidColorBrush(Color.FromRgb(14, 14, 20)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(90, 90, 90, 90)),
+            BorderThickness = new Thickness(2),
+            Margin = new Thickness(0, 0, 0, 4),
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        var refreshTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(5)
+        };
+        refreshTimer.Tick += (s, e) =>
+        {
+            try
+            {
+                string latest = CPH.GetGlobalVar<string>(tag, true) ?? "";
+                if (latest != tb.Text)
+                    tb.Text = latest;
+            }
+            catch
+            {
+            }
+        };
+        tb.Unloaded += (s, e) => refreshTimer.Stop();
+        refreshTimer.Start();
+        return border;
+    }
 
-private void AddReadOnlyLF(StackPanel p, string label, string tag, int height, string hint)
-{
-    AddFieldLabel(p, label.ToUpperInvariant());
-    p.Children.Add(MakeReadOnlyField(tag, height));
-    AddHintBox(p, "🔒 " + hint + "\nРедагується автоматично з GitHub.");
-}
-
+    private void AddReadOnlyLF(StackPanel p, string label, string tag, int height, string hint)
+    {
+        AddFieldLabel(p, label.ToUpperInvariant());
+        p.Children.Add(MakeReadOnlyField(tag, height));
+        AddHintBox(p, "🔒 " + hint + "\nРедагується автоматично з GitHub.");
+    }
 
     private UIElement MakeField(string tag, int height = 44, bool multiline = false)
     {
         string val = "";
-        try { val = CPH.GetGlobalVar<string>(tag, true) ?? ""; } catch { }
+        try
+        {
+            val = CPH.GetGlobalVar<string>(tag, true) ?? "";
+        }
+        catch
+        {
+        }
 
         var tb = new TextBox
         {
-            Tag       = tag, Text = val, MinHeight = height,
-            Padding   = new Thickness(12, 9, 12, 9),
+            Tag = tag,
+            Text = val,
+            MinHeight = height,
+            Padding = new Thickness(12, 9, 12, 9),
             Background = Brushes.Transparent,
             Foreground = new SolidColorBrush(TextPrimary),
             CaretBrush = new SolidColorBrush(AccentBlue),
-            BorderThickness  = new Thickness(0),
-            FontSize         = 13, FontFamily = new FontFamily("Consolas"),
-            TextWrapping     = multiline ? TextWrapping.Wrap : TextWrapping.NoWrap,
-            AcceptsReturn    = multiline,
-            VerticalScrollBarVisibility   = multiline ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled,
+            BorderThickness = new Thickness(0),
+            FontSize = 13,
+            FontFamily = new FontFamily("Consolas"),
+            TextWrapping = multiline ? TextWrapping.Wrap : TextWrapping.NoWrap,
+            AcceptsReturn = multiline,
+            VerticalScrollBarVisibility = multiline ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            HorizontalAlignment      = HorizontalAlignment.Stretch,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalContentAlignment = VerticalAlignment.Top
         };
-
         var border = new Border
         {
-            Child           = tb,
-            CornerRadius    = new CornerRadius(8),
-            Background      = new SolidColorBrush(BgInput),
-            BorderBrush     = new SolidColorBrush(BorderNormal),
+            Child = tb,
+            CornerRadius = new CornerRadius(8),
+            Background = new SolidColorBrush(BgInput),
+            BorderBrush = new SolidColorBrush(BorderNormal),
             BorderThickness = new Thickness(2),
-            Margin          = new Thickness(0, 0, 0, 16),
+            Margin = new Thickness(0, 0, 0, 16),
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
-
-        tb.GotFocus  += (s, e) => border.BorderBrush = new SolidColorBrush(BorderFocus);
+        tb.GotFocus += (s, e) => border.BorderBrush = new SolidColorBrush(BorderFocus);
         tb.LostFocus += (s, e) =>
         {
             border.BorderBrush = new SolidColorBrush(BorderNormal);
@@ -1693,75 +1788,89 @@ private void AddReadOnlyLF(StackPanel p, string label, string tag, int height, s
     {
         AddFieldLabel(p, label.ToUpperInvariant());
         p.Children.Add(MakeField(tag, height, multiline));
-        if (!string.IsNullOrEmpty(hint)) AddHintBox(p, hint);
+        if (!string.IsNullOrEmpty(hint))
+            AddHintBox(p, hint);
     }
 
     private void AddVolumeSlider(StackPanel p)
     {
         AddFieldLabel(p, "ГУЧНІСТЬ ЗВУКУ");
-
         string rawVal = "";
-        try { rawVal = CPH.GetGlobalVar<string>("Hello_soundVolume", true) ?? ""; } catch { }
+        try
+        {
+            rawVal = CPH.GetGlobalVar<string>("Hello_soundVolume", true) ?? "";
+        }
+        catch
+        {
+        }
 
         int initialPercent = 75;
         if (float.TryParse(rawVal, NumberStyles.Any, CultureInfo.InvariantCulture, out float fv))
             initialPercent = fv > 1f ? (int)Math.Round(fv) : (int)Math.Round(fv * 100f);
-
         var sliderCard = new Border
         {
-            Background      = new SolidColorBrush(BgInput),
-            BorderBrush     = new SolidColorBrush(BorderNormal),
+            Background = new SolidColorBrush(BgInput),
+            BorderBrush = new SolidColorBrush(BorderNormal),
             BorderThickness = new Thickness(2),
-            CornerRadius    = new CornerRadius(8),
-            Padding         = new Thickness(16, 12, 16, 12),
-            Margin          = new Thickness(0, 0, 0, 16)
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(16, 12, 16, 12),
+            Margin = new Thickness(0, 0, 0, 16)
         };
-
         var sliderInner = new StackPanel();
-
         var topRow = new Grid();
         topRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         topRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         topRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var iconLeft  = new TextBlock { Text = "🔈", FontSize = 16, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
-        var iconRight = new TextBlock { Text = "🔊", FontSize = 16, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
-
+        var iconLeft = new TextBlock
+        {
+            Text = "🔈",
+            FontSize = 16,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0)
+        };
+        var iconRight = new TextBlock
+        {
+            Text = "🔊",
+            FontSize = 16,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 0, 0)
+        };
         var valueDisplay = new Border
         {
-            Background      = new SolidColorBrush(Color.FromArgb(60, 0, 0, 0)),
-            BorderBrush     = new SolidColorBrush(Color.FromArgb(80, 150, 70, 255)),
+            Background = new SolidColorBrush(Color.FromArgb(60, 0, 0, 0)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(80, 150, 70, 255)),
             BorderThickness = new Thickness(1),
-            CornerRadius    = new CornerRadius(6),
-            Padding         = new Thickness(10, 4, 10, 4),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(10, 4, 10, 4),
             HorizontalAlignment = HorizontalAlignment.Right,
             Margin = new Thickness(0, 0, 0, 8)
         };
         var valueLabel = new TextBlock
         {
-            Text          = $"{initialPercent}%",
-            FontSize      = 16, FontWeight = FontWeights.Bold,
-            FontFamily    = new FontFamily("Consolas"),
-            Foreground    = new SolidColorBrush(Color.FromRgb(200, 240, 160)),
-            MinWidth      = 50,
+            Text = $"{initialPercent}%",
+            FontSize = 16,
+            FontWeight = FontWeights.Bold,
+            FontFamily = new FontFamily("Consolas"),
+            Foreground = new SolidColorBrush(Color.FromRgb(200, 240, 160)),
+            MinWidth = 50,
             TextAlignment = TextAlignment.Center
         };
         valueDisplay.Child = valueLabel;
-
         var slider = new Slider
         {
-            Minimum = 0, Maximum = 100,
-            Value   = initialPercent,
-            TickFrequency       = 5,
+            Minimum = 0,
+            Maximum = 100,
+            Value = initialPercent,
+            TickFrequency = 5,
             IsSnapToTickEnabled = true,
-            SmallChange = 1, LargeChange = 10,
+            SmallChange = 1,
+            LargeChange = 10,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Margin = new Thickness(0, 6, 0, 0)
         };
-
         slider.ValueChanged += (s, e) =>
         {
-            int   pct      = (int)slider.Value;
+            int pct = (int)slider.Value;
             float floatVal = pct / 100f;
             valueLabel.Text = $"{pct}%";
             try
@@ -1773,67 +1882,65 @@ private void AddReadOnlyLF(StackPanel p, string label, string tag, int height, s
                 CPH.LogWarn($"[HELLO GUI] Volume save error: {ex.Message}");
             }
 
-            valueLabel.Foreground = pct == 0
-                ? new SolidColorBrush(Color.FromRgb(180, 100, 100))
-                : pct < 30
-                    ? new SolidColorBrush(Color.FromRgb(240, 200, 100))
-                    : new SolidColorBrush(Color.FromRgb(130, 230, 120));
+            valueLabel.Foreground = pct == 0 ? new SolidColorBrush(Color.FromRgb(180, 100, 100)) : pct < 30 ? new SolidColorBrush(Color.FromRgb(240, 200, 100)) : new SolidColorBrush(Color.FromRgb(130, 230, 120));
         };
-
-        Grid.SetColumn(iconLeft,  0);
-        Grid.SetColumn(slider,    1);
+        Grid.SetColumn(iconLeft, 0);
+        Grid.SetColumn(slider, 1);
         Grid.SetColumn(iconRight, 2);
         topRow.Children.Add(iconLeft);
         topRow.Children.Add(slider);
         topRow.Children.Add(iconRight);
-
         sliderInner.Children.Add(valueDisplay);
         sliderInner.Children.Add(topRow);
-
-        var labelsRow = new Grid { Margin = new Thickness(0, 4, 0, 0) };
+        var labelsRow = new Grid
+        {
+            Margin = new Thickness(0, 4, 0, 0)
+        };
         labelsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         labelsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         labelsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         labelsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         labelsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
         void AddTickLabel(string ltext, int col)
         {
             var lbl = new TextBlock
             {
-                Text       = ltext, FontSize = 10,
+                Text = ltext,
+                FontSize = 10,
                 Foreground = new SolidColorBrush(TextMuted),
-                HorizontalAlignment = col == 0 ? HorizontalAlignment.Left
-                                    : col == 4 ? HorizontalAlignment.Right
-                                    :            HorizontalAlignment.Center
+                HorizontalAlignment = col == 0 ? HorizontalAlignment.Left : col == 4 ? HorizontalAlignment.Right : HorizontalAlignment.Center
             };
             Grid.SetColumn(lbl, col);
             labelsRow.Children.Add(lbl);
         }
-        AddTickLabel("0%",   0);
-        AddTickLabel("50%",  2);
+
+        AddTickLabel("0%", 0);
+        AddTickLabel("50%", 2);
         AddTickLabel("100%", 4);
         sliderInner.Children.Add(labelsRow);
-
         sliderCard.Child = sliderInner;
         p.Children.Add(sliderCard);
-
         slider.Value = initialPercent;
     }
 
     // =====================================================================
     //  МЕНЕДЖЕР ПЕРСОНАЛЬНИХ ЗВУКІВ
     // =====================================================================
-
     private void BuildUserSoundsManager(StackPanel p)
     {
         AddSectionTitle(p, "🎵", "Персональні звуки", "Окремий звук для конкретного глядача");
-
         // ── Зчитування / збереження записів ──
         List<(string nick, string path)> GetEntries()
         {
             string raw = "";
-            try { raw = CPH.GetGlobalVar<string>("Hello_userSounds", true) ?? ""; } catch { }
+            try
+            {
+                raw = CPH.GetGlobalVar<string>("Hello_userSounds", true) ?? "";
+            }
+            catch
+            {
+            }
+
             var result = new List<(string, string)>();
             foreach (var line in raw.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
             {
@@ -1841,58 +1948,55 @@ private void AddReadOnlyLF(StackPanel p, string label, string tag, int height, s
                 if (sep > 0)
                     result.Add((line.Substring(0, sep).Trim(), line.Substring(sep + 1).Trim()));
             }
+
             return result;
         }
 
         void SaveEntries(List<(string nick, string path)> entries)
         {
-            string raw = entries.Count == 0
-                ? ""
-                : string.Join("\n", entries.Select(e => $"{e.nick}|{e.path}"));
+            string raw = entries.Count == 0 ? "" : string.Join("\n", entries.Select(e => $"{e.nick}|{e.path}"));
             CPH.SetGlobalVar("Hello_userSounds", raw, true);
         }
 
         // ── ListBox ──
         var listBorder = new Border
         {
-            CornerRadius    = new CornerRadius(8),
-            BorderBrush     = new SolidColorBrush(BorderNormal),
+            CornerRadius = new CornerRadius(8),
+            BorderBrush = new SolidColorBrush(BorderNormal),
             BorderThickness = new Thickness(2),
-            Background      = new SolidColorBrush(BgInput),
-            Margin          = new Thickness(0, 0, 0, 10),
-            Height          = 180
+            Background = new SolidColorBrush(BgInput),
+            Margin = new Thickness(0, 0, 0, 10),
+            Height = 180
         };
         var listBox = new ListBox
         {
-            Background          = Brushes.Transparent,
-            BorderThickness     = new Thickness(0),
-            Foreground          = new SolidColorBrush(TextPrimary),
-            FontSize            = 12,
-            FontFamily          = new FontFamily("Consolas"),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Foreground = new SolidColorBrush(TextPrimary),
+            FontSize = 12,
+            FontFamily = new FontFamily("Consolas"),
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
         listBorder.Child = listBox;
-
         void RefreshList()
         {
             listBox.Items.Clear();
-            foreach (var (nick, path) in GetEntries())
+            foreach (var(nick, path)in GetEntries())
                 listBox.Items.Add($"{nick}  →  {path}");
         }
+
         RefreshList();
         p.Children.Add(listBorder);
-
         // ── Форма додавання ──
         var addCard = new Border
         {
-            Background      = new SolidColorBrush(Color.FromArgb(30, 150, 70, 255)),
-            BorderBrush     = new SolidColorBrush(BorderNormal),
+            Background = new SolidColorBrush(Color.FromArgb(30, 150, 70, 255)),
+            BorderBrush = new SolidColorBrush(BorderNormal),
             BorderThickness = new Thickness(2),
-            CornerRadius    = new CornerRadius(8),
-            Padding         = new Thickness(14, 12, 14, 12),
-            Margin          = new Thickness(0, 0, 0, 6)
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(14, 12, 14, 12),
+            Margin = new Thickness(0, 0, 0, 6)
         };
-
         var addGrid = new Grid();
         addGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) });
         addGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -1900,51 +2004,54 @@ private void AddReadOnlyLF(StackPanel p, string label, string tag, int height, s
         addGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         addGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         addGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
         // Лейбли
         var lblNick = new TextBlock
         {
-            Text       = "НІКНЕЙМ",
-            FontSize   = 10, FontWeight = FontWeights.Bold,
+            Text = "НІКНЕЙМ",
+            FontSize = 10,
+            FontWeight = FontWeights.Bold,
             Foreground = new SolidColorBrush(TextMuted),
-            Margin     = new Thickness(0, 0, 8, 4)
+            Margin = new Thickness(0, 0, 8, 4)
         };
         var lblPath = new TextBlock
         {
-            Text       = "ШЛЯХ ДО ЗВУКУ",
-            FontSize   = 10, FontWeight = FontWeights.Bold,
+            Text = "ШЛЯХ ДО ЗВУКУ",
+            FontSize = 10,
+            FontWeight = FontWeights.Bold,
             Foreground = new SolidColorBrush(TextMuted),
-            Margin     = new Thickness(8, 0, 8, 4)
+            Margin = new Thickness(8, 0, 8, 4)
         };
-        Grid.SetRow(lblNick, 0); Grid.SetColumn(lblNick, 0);
-        Grid.SetRow(lblPath, 0); Grid.SetColumn(lblPath, 1); Grid.SetColumnSpan(lblPath, 2);
+        Grid.SetRow(lblNick, 0);
+        Grid.SetColumn(lblNick, 0);
+        Grid.SetRow(lblPath, 0);
+        Grid.SetColumn(lblPath, 1);
+        Grid.SetColumnSpan(lblPath, 2);
         addGrid.Children.Add(lblNick);
         addGrid.Children.Add(lblPath);
-
         // Хелпер: поле з placeholder
         TextBox MakeInput(string placeholder)
         {
             var tb = new TextBox
             {
-                Height           = 36,
-                Padding          = new Thickness(10, 0, 10, 0),
-                Background       = new SolidColorBrush(BgInput),
-                Foreground       = Brushes.Gray,
-                CaretBrush       = new SolidColorBrush(AccentBlue),
-                BorderThickness  = new Thickness(2),
-                BorderBrush      = new SolidColorBrush(BorderNormal),
-                FontSize         = 12,
-                FontFamily       = new FontFamily("Consolas"),
+                Height = 36,
+                Padding = new Thickness(10, 0, 10, 0),
+                Background = new SolidColorBrush(BgInput),
+                Foreground = Brushes.Gray,
+                CaretBrush = new SolidColorBrush(AccentBlue),
+                BorderThickness = new Thickness(2),
+                BorderBrush = new SolidColorBrush(BorderNormal),
+                FontSize = 12,
+                FontFamily = new FontFamily("Consolas"),
                 VerticalContentAlignment = VerticalAlignment.Center,
-                Tag              = placeholder,
-                Text             = placeholder
+                Tag = placeholder,
+                Text = placeholder
             };
-            tb.GotFocus  += (s, e) =>
+            tb.GotFocus += (s, e) =>
             {
                 tb.BorderBrush = new SolidColorBrush(BorderFocus);
                 if (tb.Text == (string)tb.Tag)
                 {
-                    tb.Text       = "";
+                    tb.Text = "";
                     tb.Foreground = new SolidColorBrush(TextPrimary);
                 }
             };
@@ -1953,7 +2060,7 @@ private void AddReadOnlyLF(StackPanel p, string label, string tag, int height, s
                 tb.BorderBrush = new SolidColorBrush(BorderNormal);
                 if (string.IsNullOrWhiteSpace(tb.Text))
                 {
-                    tb.Text       = (string)tb.Tag;
+                    tb.Text = (string)tb.Tag;
                     tb.Foreground = Brushes.Gray;
                 }
             };
@@ -1964,38 +2071,41 @@ private void AddReadOnlyLF(StackPanel p, string label, string tag, int height, s
         var pathBox = MakeInput(@"C:\sounds\user.mp3");
         nickBox.Margin = new Thickness(0, 0, 8, 0);
         pathBox.Margin = new Thickness(0, 0, 6, 0);
-
-        Grid.SetRow(nickBox, 1); Grid.SetColumn(nickBox, 0);
-        Grid.SetRow(pathBox, 1); Grid.SetColumn(pathBox, 1);
+        Grid.SetRow(nickBox, 1);
+        Grid.SetColumn(nickBox, 0);
+        Grid.SetRow(pathBox, 1);
+        Grid.SetColumn(pathBox, 1);
         addGrid.Children.Add(nickBox);
         addGrid.Children.Add(pathBox);
-
         // Кнопка Browse
         var browseBtn = MakeActionBtn("📂", AccentBlue);
-        browseBtn.Width   = 40;
-        browseBtn.Height  = 36;
-        browseBtn.Margin  = new Thickness(0, 0, 6, 0);
+        browseBtn.Width = 40;
+        browseBtn.Height = 36;
+        browseBtn.Margin = new Thickness(0, 0, 6, 0);
         browseBtn.ToolTip = "Вибрати звуковий файл";
-        browseBtn.Click  += (s, e) =>
+        browseBtn.Click += (s, e) =>
         {
             try
             {
                 var dlg = new Microsoft.Win32.OpenFileDialog
                 {
-                    Title  = "Вибір звукового файлу",
+                    Title = "Вибір звукового файлу",
                     Filter = "Аудіо файли (*.mp3;*.wav;*.ogg)|*.mp3;*.wav;*.ogg|Всі файли (*.*)|*.*"
                 };
                 if (dlg.ShowDialog() == true)
                 {
-                    pathBox.Text      = dlg.FileName;
+                    pathBox.Text = dlg.FileName;
                     pathBox.Foreground = new SolidColorBrush(TextPrimary);
                 }
             }
-            catch (Exception ex) { CPH.LogWarn($"[BROWSE] {ex.Message}"); }
+            catch (Exception ex)
+            {
+                CPH.LogWarn($"[BROWSE] {ex.Message}");
+            }
         };
-        Grid.SetRow(browseBtn, 1); Grid.SetColumn(browseBtn, 2);
+        Grid.SetRow(browseBtn, 1);
+        Grid.SetColumn(browseBtn, 2);
         addGrid.Children.Add(browseBtn);
-
         // Кнопка Додати
         var addBtn = MakeActionBtn("＋  Додати", AccentGreen);
         addBtn.Height = 36;
@@ -2006,21 +2116,20 @@ private void AddReadOnlyLF(StackPanel p, string label, string tag, int height, s
             {
                 string nick = nickBox.Text?.Trim() ?? "";
                 string path = pathBox.Text?.Trim() ?? "";
-
                 bool nickIsPlaceholder = nick == "username" || string.IsNullOrEmpty(nick);
                 bool pathIsPlaceholder = path == @"C:\sounds\user.mp3" || string.IsNullOrEmpty(path);
-
-                if (nickIsPlaceholder || pathIsPlaceholder) return;
-
+                if (nickIsPlaceholder || pathIsPlaceholder)
+                    return;
                 var entries = GetEntries();
                 entries.RemoveAll(x => x.nick.Equals(nick, StringComparison.OrdinalIgnoreCase));
                 entries.Add((nick.ToLowerInvariant(), path));
                 SaveEntries(entries);
                 RefreshList();
                 LogToFile($"[USER SOUND] Додано: {nick} → {path}");
-
-                nickBox.Text      = "username";          nickBox.Foreground = Brushes.Gray;
-                pathBox.Text      = @"C:\sounds\user.mp3"; pathBox.Foreground = Brushes.Gray;
+                nickBox.Text = "username";
+                nickBox.Foreground = Brushes.Gray;
+                pathBox.Text = @"C:\sounds\user.mp3";
+                pathBox.Foreground = Brushes.Gray;
             }
             catch (Exception ex)
             {
@@ -2028,25 +2137,28 @@ private void AddReadOnlyLF(StackPanel p, string label, string tag, int height, s
                 LogToFile($"[USER SOUND ADD ERROR] {ex.Message}");
             }
         };
-        Grid.SetRow(addBtn, 1); Grid.SetColumn(addBtn, 3);
+        Grid.SetRow(addBtn, 1);
+        Grid.SetColumn(addBtn, 3);
         addGrid.Children.Add(addBtn);
-
         addCard.Child = addGrid;
         p.Children.Add(addCard);
-
         // ── Кнопки керування ──
-        var ctrlRow   = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 16) };
+        var ctrlRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 0, 0, 16)
+        };
         var removeBtn = MakeActionBtn("🗑  Видалити", AccentRed);
         removeBtn.Click += (s, e) =>
         {
             try
             {
-                if (listBox.SelectedItem == null) return;
-                string sel  = listBox.SelectedItem.ToString();
-                string nick = sel.Contains("→")
-                    ? sel.Split(new[] { "  →  " }, StringSplitOptions.None)[0].Trim()
-                    : "";
-                if (string.IsNullOrEmpty(nick)) return;
+                if (listBox.SelectedItem == null)
+                    return;
+                string sel = listBox.SelectedItem.ToString();
+                string nick = sel.Contains("→") ? sel.Split(new[] { "  →  " }, StringSplitOptions.None)[0].Trim() : "";
+                if (string.IsNullOrEmpty(nick))
+                    return;
                 var entries = GetEntries();
                 entries.RemoveAll(x => x.nick.Equals(nick, StringComparison.OrdinalIgnoreCase));
                 SaveEntries(entries);
@@ -2061,80 +2173,78 @@ private void AddReadOnlyLF(StackPanel p, string label, string tag, int height, s
         };
         ctrlRow.Children.Add(removeBtn);
         p.Children.Add(ctrlRow);
-
-        AddHintBox(p,
-            "① Введи нікнейм  ② Натисни 📂 щоб вибрати файл через провідник  ③ Натисни ＋ Додати\n" +
-            "Регістр не важливий. Якщо нікнейм вже є у списку — шлях замінюється.\n" +
-            "Якщо глядача немає у списку — грає дефолтний звук.");
+        AddHintBox(p, "① Введи нікнейм  ② Натисни 📂 щоб вибрати файл через провідник  ③ Натисни ＋ Додати\n" + "Регістр не важливий. Якщо нікнейм вже є у списку — шлях замінюється.\n" + "Якщо глядача немає у списку — грає дефолтний звук.");
     }
 
     // ── Вміст вкладок ──
-
     private void BuildGreetingsContent(StackPanel p)
     {
         AddSectionTitle(p, "👋", "Привітання", "Тексти що надсилаються в чат");
-        AddLF(p, "Список привітань (розділені |)", "Hello_greetings", multiline: true, height: 180,
-            hint: "Кожне привітання розділяється символом | — система вибирає випадкове\nПлейсхолдери: %userName%, %viewers%, %count%");
+        AddLF(p, "Список привітань (розділені |)", "Hello_greetings", multiline: true, height: 180, hint: "Кожне привітання розділяється символом | — система вибирає випадкове\nПлейсхолдери: %userName%, %viewers%, %count%");
     }
 
     private void BuildMediaContent(StackPanel p)
     {
         AddSectionTitle(p, "🖼", "Зображення / Гіфки", "Browser Source у OBS");
-        AddLF(p, "URL гіфок (розділені |)", "Hello_gifUrls", multiline: true, height: 100,
-            hint: "Кілька гіфок розділяйте | — буде обрана випадкова");
+        AddLF(p, "URL гіфок (розділені |)", "Hello_gifUrls", multiline: true, height: 100, hint: "Кілька гіфок розділяйте | — буде обрана випадкова");
         AddLF(p, "Тривалість гіфки (мс)", "Hello_gifDuration");
-
         AddSectionTitle(p, "🔊", "Звук", "Дефолтний звук — грає якщо немає персонального");
         // ── Sound path + Browse button ──
         AddFieldLabel(p, "ШЛЯХ ДО ЗВУКОВОГО ФАЙЛУ (ДЕФОЛТ)");
         {
             string _spVal = "";
-            try { _spVal = CPH.GetGlobalVar<string>("Hello_soundPath", true) ?? ""; } catch { }
+            try
+            {
+                _spVal = CPH.GetGlobalVar<string>("Hello_soundPath", true) ?? "";
+            }
+            catch
+            {
+            }
 
             var _spTb = new TextBox
             {
-                Tag      = "Hello_soundPath", Text = _spVal, Height = 36,
-                Padding  = new Thickness(12, 0, 12, 0),
-                Background       = Brushes.Transparent,
-                Foreground       = new SolidColorBrush(TextPrimary),
-                CaretBrush       = new SolidColorBrush(AccentBlue),
-                BorderThickness  = new Thickness(0),
-                FontSize         = 13, FontFamily = new FontFamily("Consolas"),
+                Tag = "Hello_soundPath",
+                Text = _spVal,
+                Height = 36,
+                Padding = new Thickness(12, 0, 12, 0),
+                Background = Brushes.Transparent,
+                Foreground = new SolidColorBrush(TextPrimary),
+                CaretBrush = new SolidColorBrush(AccentBlue),
+                BorderThickness = new Thickness(0),
+                FontSize = 13,
+                FontFamily = new FontFamily("Consolas"),
                 VerticalContentAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 TextWrapping = TextWrapping.NoWrap,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
             };
-
             var _spBorder = new Border
             {
-                CornerRadius    = new CornerRadius(8),
-                Background      = new SolidColorBrush(BgInput),
-                BorderBrush     = new SolidColorBrush(BorderNormal),
+                CornerRadius = new CornerRadius(8),
+                Background = new SolidColorBrush(BgInput),
+                BorderBrush = new SolidColorBrush(BorderNormal),
                 BorderThickness = new Thickness(2),
-                Child           = _spTb,
+                Child = _spTb,
                 HorizontalAlignment = HorizontalAlignment.Stretch
             };
-
-            _spTb.GotFocus  += (s, e) => _spBorder.BorderBrush = new SolidColorBrush(BorderFocus);
+            _spTb.GotFocus += (s, e) => _spBorder.BorderBrush = new SolidColorBrush(BorderFocus);
             _spTb.LostFocus += (s, e) =>
             {
                 _spBorder.BorderBrush = new SolidColorBrush(BorderNormal);
                 CPH.SetGlobalVar("Hello_soundPath", _spTb.Text?.Trim() ?? "", true);
             };
-
             var _spBrowse = MakeActionBtn("📂", AccentBlue);
-            _spBrowse.Width   = 40;
-            _spBrowse.Height  = 36;
-            _spBrowse.Margin  = new Thickness(8, 0, 0, 0);
+            _spBrowse.Width = 40;
+            _spBrowse.Height = 36;
+            _spBrowse.Margin = new Thickness(8, 0, 0, 0);
             _spBrowse.ToolTip = "Вибрати звуковий файл";
-            _spBrowse.Click  += (s, e) =>
+            _spBrowse.Click += (s, e) =>
             {
                 try
                 {
                     var dlg = new Microsoft.Win32.OpenFileDialog
                     {
-                        Title  = "Вибір дефолтного звукового файлу",
+                        Title = "Вибір дефолтного звукового файлу",
                         Filter = "Аудіо файли (*.mp3;*.wav;*.ogg)|*.mp3;*.wav;*.ogg|Всі файли (*.*)|*.*"
                     };
                     if (dlg.ShowDialog() == true)
@@ -2143,35 +2253,36 @@ private void AddReadOnlyLF(StackPanel p, string label, string tag, int height, s
                         CPH.SetGlobalVar("Hello_soundPath", dlg.FileName, true);
                     }
                 }
-                catch (Exception ex) { CPH.LogWarn($"[BROWSE soundPath] {ex.Message}"); }
+                catch (Exception ex)
+                {
+                    CPH.LogWarn($"[BROWSE soundPath] {ex.Message}");
+                }
             };
-
-            var _spRow = new Grid { Margin = new Thickness(0, 0, 0, 0) };
+            var _spRow = new Grid
+            {
+                Margin = new Thickness(0, 0, 0, 0)
+            };
             _spRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             _spRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             Grid.SetColumn(_spBorder, 0);
             Grid.SetColumn(_spBrowse, 1);
             _spRow.Children.Add(_spBorder);
             _spRow.Children.Add(_spBrowse);
-
             p.Children.Add(new Border { Child = _spRow, Margin = new Thickness(0, 0, 0, 4) });
         }
+
         AddHintBox(p, "Повний шлях до .mp3 або .wav файлу. Грає для всіх, у кого немає власного звуку.");
         AddLF(p, "Затримка звуку (мс)", "Hello_soundDelayMs");
-
         AddVolumeSlider(p);
-
         // ── ПЕРСОНАЛЬНІ ЗВУКИ — новий менеджер ──
         BuildUserSoundsManager(p);
-
         AddSectionTitle(p, "📺", "OBS джерела");
-        AddLF(p, "OBS сцена",                                      "Hello_obsScene");
-        AddLF(p, "Browser Source (гіфка)",                         "Hello_obsSource");
-        AddLF(p, "Browser Source (профільне фото)",                "Hello_obsSourceProfile");
+        AddLF(p, "OBS сцена", "Hello_obsScene");
+        AddLF(p, "Browser Source (гіфка)", "Hello_obsSource");
+        AddLF(p, "Browser Source (профільне фото)", "Hello_obsSourceProfile");
         AddLF(p, "Тривалість профільного фото (мс, 0 = як гіфка)", "Hello_profileDuration");
-        AddLF(p, "Text (GDI+) Source (нікнейм)",                   "Hello_obsTextSource");
+        AddLF(p, "Text (GDI+) Source (нікнейм)", "Hello_obsTextSource");
         AddLF(p, "Шаблон тексту", "Hello_textTemplate", hint: "Плейсхолдер: %userName%");
-
         AddSectionTitle(p, "⏱", "Черга");
         AddLF(p, "Затримка між привітаннями в черзі (сек)", "Hello_queueDelaySec");
     }
@@ -2179,73 +2290,73 @@ private void AddReadOnlyLF(StackPanel p, string label, string tag, int height, s
     private void BuildFiltersContent(StackPanel p)
     {
         AddSectionTitle(p, "🔒", "Повний ігнор");
-        AddLF(p, "Повний ігнор користувачів (|)", "Hello_excludedUsers", multiline: true, height: 80,
-            hint: "Ці користувачі не отримають жодного привітання");
-
+        AddLF(p, "Повний ігнор користувачів (|)", "Hello_excludedBots", multiline: true, height: 80, hint: "Ці користувачі не отримають жодного привітання. Список ботів з GitHub додається сюди автоматично при синхронізації.");
         AddSectionTitle(p, "🎬", "Медіа-фільтри");
         AddLF(p, "Тільки медіа — без тексту в чат (|)", "Hello_onlyMediaUsers", multiline: true, height: 80);
-        AddLF(p, "Без звуку (|)",                        "Hello_ignoreMediaUsers", multiline: true, height: 80);
-
+        AddLF(p, "Без звуку (|)", "Hello_ignoreMediaUsers", multiline: true, height: 80);
         AddSectionTitle(p, "💬", "Фільтри повідомлень", "ЩОби довантажити нажміть вкладку «Про мене» далі → «Синхронізація фільтрів»)");
-     AddReadOnlyLF(p, "Ігнорувати слова (|)",   "Hello_ignoreWords",   80,
-    "Джерело: GitHub");
-AddReadOnlyLF(p, "Ігнорувати символи (|)", "Hello_ignoreSymbols", 80,
-    "Джерело: GitHub");
-AddReadOnlyLF(p, "Кириличні символи (будь-який = ігнор)", "Hello_russianLetters", 60,
-    "Джерело: GitHub");
-
-     AddSectionTitle(p, "🌐", "Фільтри посилань", "GitHub-список  автоматично завантажиться; можна дописувати свої вручну");
-AddLF(p, "Заборонені домени (|)", "Hello_ignoreDomains", multiline: true, height: 80,
-    hint: "Можна редагувати вручну — GitHub-список  автоматично завантажиться");
-AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowedDomains", multiline: true, height: 80,
-    hint: "Можна редагувати вручну — GitHub-список  автоматично завантажиться");
+        AddReadOnlyLF(p, "Ігнорувати слова (|)", "Hello_ignoreWords", 80, "Джерело: GitHub");
+        AddReadOnlyLF(p, "Ігнорувати символи (|)", "Hello_ignoreSymbols", 80, "Джерело: GitHub");
+        AddReadOnlyLF(p, "Кириличні символи (будь-який = ігнор)", "Hello_russianLetters", 60, "Джерело: GitHub");
+        AddSectionTitle(p, "🌐", "Фільтри посилань", "GitHub-список  автоматично завантажиться; можна дописувати свої вручну");
+        AddLF(p, "Заборонені домени (|)", "Hello_ignoreDomains", multiline: true, height: 80, hint: "Можна редагувати вручну — GitHub-список  автоматично завантажиться");
+        AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowedDomains", multiline: true, height: 80, hint: "Можна редагувати вручну — GitHub-список  автоматично завантажиться");
     }
 
     private UIElement BuildQueueContent()
     {
         var queueScroll = new Style(typeof(ScrollViewer));
         queueScroll.Setters.Add(new Setter(ScrollViewer.HorizontalScrollBarVisibilityProperty, ScrollBarVisibility.Disabled));
-        queueScroll.Setters.Add(new Setter(ScrollViewer.VerticalScrollBarVisibilityProperty,   ScrollBarVisibility.Hidden));
-        queueScroll.Setters.Add(new Setter(ScrollViewer.PanningModeProperty,                   PanningMode.VerticalOnly));
-
-        var outer = new StackPanel { Margin = new Thickness(28, 20, 28, 28) };
-
-        var titleRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
+        queueScroll.Setters.Add(new Setter(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Hidden));
+        queueScroll.Setters.Add(new Setter(ScrollViewer.PanningModeProperty, PanningMode.VerticalOnly));
+        var outer = new StackPanel
+        {
+            Margin = new Thickness(28, 20, 28, 28)
+        };
+        var titleRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 0, 0, 6)
+        };
         titleRow.Children.Add(new TextBlock { Text = "📋", FontSize = 18, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
         titleRow.Children.Add(new TextBlock { Text = "Черга привітань", FontSize = 16, FontWeight = FontWeights.Bold, Foreground = new LinearGradientBrush(AccentPurple, AccentBlue, 0), VerticalAlignment = VerticalAlignment.Center });
         outer.Children.Add(titleRow);
         outer.Children.Add(new Border { Height = 1, Margin = new Thickness(0, 4, 0, 16), Background = new LinearGradientBrush(Color.FromArgb(90, 150, 70, 255), Color.FromArgb(0, 150, 70, 255), 0) });
-
-        var countText = new TextBlock { Text = "У черзі: 0", FontSize = 12, Foreground = new SolidColorBrush(TextMuted), Margin = new Thickness(0, 0, 0, 8) };
+        var countText = new TextBlock
+        {
+            Text = "У черзі: 0",
+            FontSize = 12,
+            Foreground = new SolidColorBrush(TextMuted),
+            Margin = new Thickness(0, 0, 0, 8)
+        };
         outer.Children.Add(countText);
-
         var listBorder = new Border
         {
-            CornerRadius    = new CornerRadius(8),
-            BorderBrush     = new SolidColorBrush(BorderNormal),
+            CornerRadius = new CornerRadius(8),
+            BorderBrush = new SolidColorBrush(BorderNormal),
             BorderThickness = new Thickness(2),
-            Background      = new SolidColorBrush(BgInput),
-            Margin          = new Thickness(0, 0, 0, 14),
-            Height          = 280
+            Background = new SolidColorBrush(BgInput),
+            Margin = new Thickness(0, 0, 0, 14),
+            Height = 280
         };
         var listBox = new ListBox
         {
-            Background      = Brushes.Transparent,
+            Background = Brushes.Transparent,
             BorderThickness = new Thickness(0),
-            Foreground      = new SolidColorBrush(TextPrimary),
-            FontSize        = 13,
+            Foreground = new SolidColorBrush(TextPrimary),
+            FontSize = 13,
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
         listBorder.Child = listBox;
         outer.Children.Add(listBorder);
-
         void RefreshList()
         {
             try
             {
                 listBox.Items.Clear();
                 var pending = GetPendingQueue();
-                foreach (var item in pending) listBox.Items.Add(item);
+                foreach (var item in pending)
+                    listBox.Items.Add(item);
                 countText.Text = $"У черзі: {pending.Count}";
             }
             catch (Exception ex)
@@ -2254,21 +2365,25 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
                 CPH.LogWarn($"[HELLO QUEUE GUI] {ex.Message}");
             }
         }
+
         RefreshList();
-
-        var btnRow     = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 0) };
-        var removeBtn  = MakeActionBtn("🗑  Видалити", AccentRed);
-        var clearBtn   = MakeActionBtn("✕  Очистити",  Color.FromRgb(200, 50, 70));
-        var upBtn      = MakeActionBtn("↑  Вгору",     AccentBlue);
-        var downBtn    = MakeActionBtn("↓  Вниз",      AccentBlue);
-        var refreshBtn = MakeActionBtn("↻  Оновити",   AccentPurple);
-
+        var btnRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 0, 0, 0)
+        };
+        var removeBtn = MakeActionBtn("🗑  Видалити", AccentRed);
+        var clearBtn = MakeActionBtn("✕  Очистити", Color.FromRgb(200, 50, 70));
+        var upBtn = MakeActionBtn("↑  Вгору", AccentBlue);
+        var downBtn = MakeActionBtn("↓  Вниз", AccentBlue);
+        var refreshBtn = MakeActionBtn("↻  Оновити", AccentPurple);
         removeBtn.Click += (s, e) =>
         {
             try
             {
-                if (listBox.SelectedItem == null) return;
-                string sel  = listBox.SelectedItem.ToString();
+                if (listBox.SelectedItem == null)
+                    return;
+                string sel = listBox.SelectedItem.ToString();
                 var pending = GetPendingQueue();
                 pending.RemoveAll(x => x.Equals(sel, StringComparison.OrdinalIgnoreCase));
                 SavePendingQueue(pending);
@@ -2281,7 +2396,6 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
                 LogToFile($"[QUEUE GUI REMOVE ERROR] {ex.Message}");
             }
         };
-
         clearBtn.Click += (s, e) =>
         {
             try
@@ -2297,16 +2411,18 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
                 LogToFile($"[QUEUE GUI CLEAR ERROR] {ex.Message}");
             }
         };
-
         upBtn.Click += (s, e) =>
         {
             try
             {
-                if (listBox.SelectedItem == null) return;
-                int idx     = listBox.SelectedIndex;
-                if (idx <= 0) return;
+                if (listBox.SelectedItem == null)
+                    return;
+                int idx = listBox.SelectedIndex;
+                if (idx <= 0)
+                    return;
                 var pending = GetPendingQueue();
-                if (idx >= pending.Count) return;
+                if (idx >= pending.Count)
+                    return;
                 var item = pending[idx];
                 pending.RemoveAt(idx);
                 pending.Insert(idx - 1, item);
@@ -2320,15 +2436,16 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
                 LogToFile($"[QUEUE GUI UP ERROR] {ex.Message}");
             }
         };
-
         downBtn.Click += (s, e) =>
         {
             try
             {
-                if (listBox.SelectedItem == null) return;
-                int idx     = listBox.SelectedIndex;
+                if (listBox.SelectedItem == null)
+                    return;
+                int idx = listBox.SelectedIndex;
                 var pending = GetPendingQueue();
-                if (idx < 0 || idx >= pending.Count - 1) return;
+                if (idx < 0 || idx >= pending.Count - 1)
+                    return;
                 var item = pending[idx];
                 pending.RemoveAt(idx);
                 pending.Insert(idx + 1, item);
@@ -2342,105 +2459,140 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
                 LogToFile($"[QUEUE GUI DOWN ERROR] {ex.Message}");
             }
         };
-
         refreshBtn.Click += (s, e) => RefreshList();
-
         btnRow.Children.Add(removeBtn);
         btnRow.Children.Add(clearBtn);
         btnRow.Children.Add(upBtn);
         btnRow.Children.Add(downBtn);
         btnRow.Children.Add(refreshBtn);
         outer.Children.Add(btnRow);
-
-        return new ScrollViewer { Content = outer, Style = queueScroll };
+        return new ScrollViewer
+        {
+            Content = outer,
+            Style = queueScroll
+        };
     }
 
     private void BuildAboutContent(StackPanel p, Window ownerWindow)
     {
-        
         Dispatcher uiDispatcher = ownerWindow.Dispatcher;
-
         AddSectionTitle(p, "🔄", "Оновлення", "Перевірка та завантаження нової версії скрипта");
         {
             string status = "";
-            try { status = CPH.GetGlobalVar<string>("Hello_updateStatus", true) ?? "Ще не перевірялось"; } catch { status = "Ще не перевірялось"; }
+            try
+            {
+                status = CPH.GetGlobalVar<string>("Hello_updateStatus", true) ?? "Ще не перевірялось";
+            }
+            catch
+            {
+                status = "Ще не перевірялось";
+            }
+
             string remoteV = "";
-            try { remoteV = CPH.GetGlobalVar<string>("Hello_remoteVersion", true) ?? ""; } catch { }
+            try
+            {
+                remoteV = CPH.GetGlobalVar<string>("Hello_remoteVersion", true) ?? "";
+            }
+            catch
+            {
+            }
+
             string lastCheck = "";
-            try { lastCheck = CPH.GetGlobalVar<string>("Hello_lastCheckTime", true) ?? ""; } catch { }
+            try
+            {
+                lastCheck = CPH.GetGlobalVar<string>("Hello_lastCheckTime", true) ?? "";
+            }
+            catch
+            {
+            }
 
             // ── НОВЕ: версія старого (rollback) коду ──
             string oldVersion = "";
-            try { oldVersion = CPH.GetGlobalVar<string>("Hello_oldVersion", true) ?? ""; } catch { }
-            if (string.IsNullOrWhiteSpace(oldVersion)) oldVersion = "невідома (ще не перевірялось)";
+            try
+            {
+                oldVersion = CPH.GetGlobalVar<string>("Hello_oldVersion", true) ?? "";
+            }
+            catch
+            {
+            }
+
+            if (string.IsNullOrWhiteSpace(oldVersion))
+                oldVersion = "невідома (ще не перевірялось)";
             string oldVersionCheck = "";
-            try { oldVersionCheck = CPH.GetGlobalVar<string>("Hello_oldVersionCheckTime", true) ?? ""; } catch { }
+            try
+            {
+                oldVersionCheck = CPH.GetGlobalVar<string>("Hello_oldVersionCheckTime", true) ?? "";
+            }
+            catch
+            {
+            }
 
             var updCard = new Border
             {
-                Background      = new SolidColorBrush(Color.FromArgb(30, 70, 160, 255)),
-                BorderBrush     = new SolidColorBrush(BorderNormal),
+                Background = new SolidColorBrush(Color.FromArgb(30, 70, 160, 255)),
+                BorderBrush = new SolidColorBrush(BorderNormal),
                 BorderThickness = new Thickness(2),
-                CornerRadius    = new CornerRadius(8),
-                Padding         = new Thickness(16, 14, 16, 14),
-                Margin          = new Thickness(0, 0, 0, 20)
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(16, 14, 16, 14),
+                Margin = new Thickness(0, 0, 0, 20)
             };
             var updInner = new StackPanel();
-
-            var verRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
+            var verRow = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(0, 0, 0, 6)
+            };
             verRow.Children.Add(new TextBlock { Text = "Поточна версія: ", FontSize = 12, Foreground = new SolidColorBrush(TextMuted) });
             verRow.Children.Add(new TextBlock { Text = CurrentVersion, FontSize = 12, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(TextPrimary) });
             updInner.Children.Add(verRow);
-
             // ── НОВЕ: рядок з версією для відкату (rollback) ──
-            var oldVerRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
+            var oldVerRow = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(0, 0, 0, 6)
+            };
             oldVerRow.Children.Add(new TextBlock { Text = "Версія відкату (rollback): ", FontSize = 12, Foreground = new SolidColorBrush(TextMuted) });
-            var oldVerValueText = new TextBlock { Text = oldVersion, FontSize = 12, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(Color.FromRgb(255, 180, 120)) };
+            var oldVerValueText = new TextBlock
+            {
+                Text = oldVersion,
+                FontSize = 12,
+                FontWeight = FontWeights.Bold,
+                Foreground = new SolidColorBrush(Color.FromRgb(255, 180, 120))
+            };
             oldVerRow.Children.Add(oldVerValueText);
             updInner.Children.Add(oldVerRow);
-
             var statusText = new TextBlock
             {
-                Text       = $"Статус: {status}" + (!string.IsNullOrEmpty(remoteV) ? $"  (репозиторій: {remoteV})" : ""),
-                FontSize   = 12,
+                Text = $"Статус: {status}" + (!string.IsNullOrEmpty(remoteV) ? $"  (репозиторій: {remoteV})" : ""),
+                FontSize = 12,
                 Foreground = new SolidColorBrush(TextMuted),
-                Margin     = new Thickness(0, 0, 0, 4),
+                Margin = new Thickness(0, 0, 0, 4),
                 TextWrapping = TextWrapping.Wrap
             };
             updInner.Children.Add(statusText);
-
             if (!string.IsNullOrEmpty(lastCheck))
             {
-                updInner.Children.Add(new TextBlock
-                {
-                    Text       = $"Остання перевірка: {lastCheck}",
-                    FontSize   = 10,
-                    Foreground = new SolidColorBrush(TextMuted),
-                    Margin     = new Thickness(0, 0, 0, 2)
-                });
+                updInner.Children.Add(new TextBlock { Text = $"Остання перевірка: {lastCheck}", FontSize = 10, Foreground = new SolidColorBrush(TextMuted), Margin = new Thickness(0, 0, 0, 2) });
             }
 
             if (!string.IsNullOrEmpty(oldVersionCheck))
             {
-                updInner.Children.Add(new TextBlock
-                {
-                    Text       = $"Остання перевірка версії відкату: {oldVersionCheck}",
-                    FontSize   = 10,
-                    Foreground = new SolidColorBrush(TextMuted),
-                    Margin     = new Thickness(0, 0, 0, 10)
-                });
+                updInner.Children.Add(new TextBlock { Text = $"Остання перевірка версії відкату: {oldVersionCheck}", FontSize = 10, Foreground = new SolidColorBrush(TextMuted), Margin = new Thickness(0, 0, 0, 10) });
             }
 
-            var updBtnRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
-            var checkBtn  = MakeActionBtn("🔍  Перевірити оновлення", AccentBlue);
-            var dlBtn     = MakeActionBtn("⬇  Завантажити оновлення", AccentGreen);
+            var updBtnRow = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(0, 6, 0, 0)
+            };
+            var checkBtn = MakeActionBtn("🔍  Перевірити оновлення", AccentBlue);
+            var dlBtn = MakeActionBtn("⬇  Завантажити оновлення", AccentGreen);
             var rollbackBtn = MakeActionBtn("⟲  Повернутись на попередню версію", AccentRed);
-
             checkBtn.Click += (s, e) =>
             {
                 try
                 {
-                    checkBtn.Content   = "⏳  Перевірка...";
+                    checkBtn.Content = "⏳  Перевірка...";
                     checkBtn.IsEnabled = false;
                     ThreadPool.QueueUserWorkItem(_ =>
                     {
@@ -2466,23 +2618,42 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
 
                         try
                         {
-                            
                             uiDispatcher.Invoke(() =>
                             {
                                 try
                                 {
-                                    string newStatus  = "";
+                                    string newStatus = "";
                                     string newRemoteV = "";
-                                    try { newStatus  = CPH.GetGlobalVar<string>("Hello_updateStatus",  true) ?? ""; } catch { }
-                                    try { newRemoteV = CPH.GetGlobalVar<string>("Hello_remoteVersion", true) ?? ""; } catch { }
+                                    try
+                                    {
+                                        newStatus = CPH.GetGlobalVar<string>("Hello_updateStatus", true) ?? "";
+                                    }
+                                    catch
+                                    {
+                                    }
+
+                                    try
+                                    {
+                                        newRemoteV = CPH.GetGlobalVar<string>("Hello_remoteVersion", true) ?? "";
+                                    }
+                                    catch
+                                    {
+                                    }
+
                                     statusText.Text = $"Статус: {newStatus}" + (!string.IsNullOrEmpty(newRemoteV) ? $"  (репозиторій: {newRemoteV})" : "");
-
                                     string newOldVersion = "";
-                                    try { newOldVersion = CPH.GetGlobalVar<string>("Hello_oldVersion", true) ?? ""; } catch { }
-                                    if (string.IsNullOrWhiteSpace(newOldVersion)) newOldVersion = "невідома (ще не перевірялось)";
-                                    oldVerValueText.Text = newOldVersion;
+                                    try
+                                    {
+                                        newOldVersion = CPH.GetGlobalVar<string>("Hello_oldVersion", true) ?? "";
+                                    }
+                                    catch
+                                    {
+                                    }
 
-                                    checkBtn.Content   = "🔍  Перевірити оновлення";
+                                    if (string.IsNullOrWhiteSpace(newOldVersion))
+                                        newOldVersion = "невідома (ще не перевірялось)";
+                                    oldVerValueText.Text = newOldVersion;
+                                    checkBtn.Content = "🔍  Перевірити оновлення";
                                     checkBtn.IsEnabled = true;
                                 }
                                 catch (Exception exUi)
@@ -2503,20 +2674,19 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
                 {
                     CPH.LogWarn($"[HELLO GUI] Check-update click error: {exClick.Message}");
                     LogToFile($"[UPDATE CHECK CLICK ERROR] {exClick.Message}");
-                    checkBtn.Content   = "🔍  Перевірити оновлення";
+                    checkBtn.Content = "🔍  Перевірити оновлення";
                     checkBtn.IsEnabled = true;
                 }
             };
-
             dlBtn.Click += (s, e) =>
             {
                 try
                 {
-                    dlBtn.Content   = "⏳  Завантаження...";
+                    dlBtn.Content = "⏳  Завантаження...";
                     dlBtn.IsEnabled = false;
                     ThreadPool.QueueUserWorkItem(_ =>
                     {
-                        bool   ok       = false;
+                        bool ok = false;
                         string codeText = null;
                         try
                         {
@@ -2541,12 +2711,12 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
 
                                     if (ok && clipboardOk)
                                     {
-                                        dlBtn.Content   = "✅  Скопійовано в буфер!";
+                                        dlBtn.Content = "✅  Скопійовано в буфер!";
                                         statusText.Text = "Код скопійовано в буфер обміну (Ctrl+V щоб вставити в дію Streamer.bot).";
                                     }
                                     else if (ok && !clipboardOk)
                                     {
-                                        dlBtn.Content   = "⚠  Буфер не вдався";
+                                        dlBtn.Content = "⚠  Буфер не вдався";
                                         statusText.Text = "Код завантажено, але скопіювати в буфер не вдалось. Спробуй ще раз.";
                                     }
                                     else
@@ -2555,9 +2725,15 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
                                     }
 
                                     dlBtn.IsEnabled = true;
-
-                                    var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2500) };
-                                    timer.Tick += (ts, te) => { timer.Stop(); dlBtn.Content = "⬇  Завантажити оновлення"; };
+                                    var timer = new DispatcherTimer
+                                    {
+                                        Interval = TimeSpan.FromMilliseconds(2500)
+                                    };
+                                    timer.Tick += (ts, te) =>
+                                    {
+                                        timer.Stop();
+                                        dlBtn.Content = "⬇  Завантажити оновлення";
+                                    };
                                     timer.Start();
                                 }
                                 catch (Exception exUi)
@@ -2578,20 +2754,19 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
                 {
                     CPH.LogWarn($"[HELLO GUI] Download-update click error: {exClick.Message}");
                     LogToFile($"[UPDATE DOWNLOAD CLICK ERROR] {exClick.Message}");
-                    dlBtn.Content   = "⬇  Завантажити оновлення";
+                    dlBtn.Content = "⬇  Завантажити оновлення";
                     dlBtn.IsEnabled = true;
                 }
             };
-
             rollbackBtn.Click += (s, e) =>
             {
                 try
                 {
-                    rollbackBtn.Content   = "⏳  Завантаження старої версії...";
+                    rollbackBtn.Content = "⏳  Завантаження старої версії...";
                     rollbackBtn.IsEnabled = false;
                     ThreadPool.QueueUserWorkItem(_ =>
                     {
-                        bool   ok       = false;
+                        bool ok = false;
                         string codeText = null;
                         try
                         {
@@ -2628,12 +2803,12 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
                                     if (ok && clipboardOk)
                                     {
                                         rollbackBtn.Content = "✅  Стару версію скопійовано!";
-                                        statusText.Text     = "Попередню версію коду скопійовано в буфер обміну (Ctrl+V щоб вставити в дію Streamer.bot).";
+                                        statusText.Text = "Попередню версію коду скопійовано в буфер обміну (Ctrl+V щоб вставити в дію Streamer.bot).";
                                     }
                                     else if (ok && !clipboardOk)
                                     {
                                         rollbackBtn.Content = "⚠  Буфер не вдався";
-                                        statusText.Text     = "Стару версію завантажено, але скопіювати в буфер не вдалось. Спробуй ще раз.";
+                                        statusText.Text = "Стару версію завантажено, але скопіювати в буфер не вдалось. Спробуй ще раз.";
                                     }
                                     else
                                     {
@@ -2641,14 +2816,27 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
                                     }
 
                                     string newOldVersion = "";
-                                    try { newOldVersion = CPH.GetGlobalVar<string>("Hello_oldVersion", true) ?? ""; } catch { }
-                                    if (string.IsNullOrWhiteSpace(newOldVersion)) newOldVersion = "невідома (ще не перевірялось)";
+                                    try
+                                    {
+                                        newOldVersion = CPH.GetGlobalVar<string>("Hello_oldVersion", true) ?? "";
+                                    }
+                                    catch
+                                    {
+                                    }
+
+                                    if (string.IsNullOrWhiteSpace(newOldVersion))
+                                        newOldVersion = "невідома (ще не перевірялось)";
                                     oldVerValueText.Text = newOldVersion;
-
                                     rollbackBtn.IsEnabled = true;
-
-                                    var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2500) };
-                                    timer.Tick += (ts, te) => { timer.Stop(); rollbackBtn.Content = "⟲  Повернутись на попередню версію"; };
+                                    var timer = new DispatcherTimer
+                                    {
+                                        Interval = TimeSpan.FromMilliseconds(2500)
+                                    };
+                                    timer.Tick += (ts, te) =>
+                                    {
+                                        timer.Stop();
+                                        rollbackBtn.Content = "⟲  Повернутись на попередню версію";
+                                    };
                                     timer.Start();
                                 }
                                 catch (Exception exUi)
@@ -2669,63 +2857,62 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
                 {
                     CPH.LogWarn($"[HELLO GUI] Rollback click error: {exClick.Message}");
                     LogToFile($"[ROLLBACK CLICK ERROR] {exClick.Message}");
-                    rollbackBtn.Content   = "⟲  Повернутись на попередню версію";
+                    rollbackBtn.Content = "⟲  Повернутись на попередню версію";
                     rollbackBtn.IsEnabled = true;
                 }
             };
-
             updBtnRow.Children.Add(checkBtn);
             updBtnRow.Children.Add(dlBtn);
             updBtnRow.Children.Add(rollbackBtn);
             updInner.Children.Add(updBtnRow);
-
             updCard.Child = updInner;
             p.Children.Add(updCard);
-
-            AddHintBox(p,
-                "Перевірка звіряє файл Version у репозиторії з версією, вшитою в цей скрипт.\n" +
-                "Версія відкату береться з файлу oldversion у репозиторії — саме на неї відкотить кнопка «Повернутись на попередню версію».\n" +
-                "«Завантажити оновлення» копіює актуальний код у буфер обміну — встав його (Ctrl+V) у дію Streamer.bot.\n" +
-                "«Повернутись на попередню версію» копіює старий код (OldCode) з репозиторію в буфер обміну — так само встав через Ctrl+V у дію Streamer.bot, щоб відкотитись.");
+            AddHintBox(p, "Перевірка звіряє файл Version у репозиторії з версією, вшитою в цей скрипт.\n" + "Версія відкату береться з файлу oldversion у репозиторії — саме на неї відкотить кнопка «Повернутись на попередню версію».\n" + "«Завантажити оновлення» копіює актуальний код у буфер обміну — встав його (Ctrl+V) у дію Streamer.bot.\n" + "«Повернутись на попередню версію» копіює старий код (OldCode) з репозиторію в буфер обміну — так само встав через Ctrl+V у дію Streamer.bot, щоб відкотитись.");
         }
 
         AddSectionTitle(p, "🌐", "Синхронізація фільтрів", "Автопідтягування з GitHub");
         {
             string filterStatus = "";
-            try { filterStatus = CPH.GetGlobalVar<string>("Hello_filterSyncStatus", true) ?? "Ще не синхронізовано"; } catch { filterStatus = "Ще не синхронізовано"; }
+            try
+            {
+                filterStatus = CPH.GetGlobalVar<string>("Hello_filterSyncStatus", true) ?? "Ще не синхронізовано";
+            }
+            catch
+            {
+                filterStatus = "Ще не синхронізовано";
+            }
+
             string lastFilterSync = "";
-            try { lastFilterSync = CPH.GetGlobalVar<string>("Hello_lastFilterSyncTime", true) ?? ""; } catch { }
+            try
+            {
+                lastFilterSync = CPH.GetGlobalVar<string>("Hello_lastFilterSyncTime", true) ?? "";
+            }
+            catch
+            {
+            }
 
             var syncCard = new Border
             {
-                Background      = new SolidColorBrush(Color.FromArgb(30, 150, 70, 255)),
-                BorderBrush     = new SolidColorBrush(BorderNormal),
+                Background = new SolidColorBrush(Color.FromArgb(30, 150, 70, 255)),
+                BorderBrush = new SolidColorBrush(BorderNormal),
                 BorderThickness = new Thickness(2),
-                CornerRadius    = new CornerRadius(8),
-                Padding         = new Thickness(16, 14, 16, 14),
-                Margin          = new Thickness(0, 0, 0, 20)
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(16, 14, 16, 14),
+                Margin = new Thickness(0, 0, 0, 20)
             };
             var syncInner = new StackPanel();
-
             var syncStatusText = new TextBlock
             {
-                Text         = $"Статус: {filterStatus}",
-                FontSize     = 12,
-                Foreground   = new SolidColorBrush(TextMuted),
-                Margin       = new Thickness(0, 0, 0, 4),
+                Text = $"Статус: {filterStatus}",
+                FontSize = 12,
+                Foreground = new SolidColorBrush(TextMuted),
+                Margin = new Thickness(0, 0, 0, 4),
                 TextWrapping = TextWrapping.Wrap
             };
             syncInner.Children.Add(syncStatusText);
-
             if (!string.IsNullOrEmpty(lastFilterSync))
             {
-                syncInner.Children.Add(new TextBlock
-                {
-                    Text       = $"Остання синхронізація: {lastFilterSync}",
-                    FontSize   = 10,
-                    Foreground = new SolidColorBrush(TextMuted),
-                    Margin     = new Thickness(0, 0, 0, 10)
-                });
+                syncInner.Children.Add(new TextBlock { Text = $"Остання синхронізація: {lastFilterSync}", FontSize = 10, Foreground = new SolidColorBrush(TextMuted), Margin = new Thickness(0, 0, 0, 10) });
             }
 
             var syncBtn = MakeActionBtn("🔄  Синхронізувати фільтри", AccentBlue);
@@ -2733,7 +2920,7 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
             {
                 try
                 {
-                    syncBtn.Content   = "⏳  Синхронізація...";
+                    syncBtn.Content = "⏳  Синхронізація...";
                     syncBtn.IsEnabled = false;
                     ThreadPool.QueueUserWorkItem(_ =>
                     {
@@ -2753,15 +2940,35 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
                                 try
                                 {
                                     string newStatus = "";
-                                    string newSync   = "";
-                                    try { newStatus = CPH.GetGlobalVar<string>("Hello_filterSyncStatus",  true) ?? ""; } catch { }
-                                    try { newSync   = CPH.GetGlobalVar<string>("Hello_lastFilterSyncTime", true) ?? ""; } catch { }
-                                    syncStatusText.Text = $"Статус: {newStatus}" + (!string.IsNullOrEmpty(newSync) ? $"  (остання синхронізація: {newSync})" : "");
-                                    syncBtn.Content   = "✅  Синхронізовано!";
-                                    syncBtn.IsEnabled = true;
+                                    string newSync = "";
+                                    try
+                                    {
+                                        newStatus = CPH.GetGlobalVar<string>("Hello_filterSyncStatus", true) ?? "";
+                                    }
+                                    catch
+                                    {
+                                    }
 
-                                    var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2000) };
-                                    timer.Tick += (ts, te) => { timer.Stop(); syncBtn.Content = "🔄  Синхронізувати фільтри"; };
+                                    try
+                                    {
+                                        newSync = CPH.GetGlobalVar<string>("Hello_lastFilterSyncTime", true) ?? "";
+                                    }
+                                    catch
+                                    {
+                                    }
+
+                                    syncStatusText.Text = $"Статус: {newStatus}" + (!string.IsNullOrEmpty(newSync) ? $"  (остання синхронізація: {newSync})" : "");
+                                    syncBtn.Content = "✅  Синхронізовано!";
+                                    syncBtn.IsEnabled = true;
+                                    var timer = new DispatcherTimer
+                                    {
+                                        Interval = TimeSpan.FromMilliseconds(2000)
+                                    };
+                                    timer.Tick += (ts, te) =>
+                                    {
+                                        timer.Stop();
+                                        syncBtn.Content = "🔄  Синхронізувати фільтри";
+                                    };
                                     timer.Start();
                                 }
                                 catch (Exception exUi)
@@ -2782,75 +2989,56 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
                 {
                     CPH.LogWarn($"[HELLO GUI] Sync-filters click error: {exClick.Message}");
                     LogToFile($"[SYNC CLICK ERROR] {exClick.Message}");
-                    syncBtn.Content   = "🔄  Синхронізувати фільтри";
+                    syncBtn.Content = "🔄  Синхронізувати фільтри";
                     syncBtn.IsEnabled = true;
                 }
             };
             syncInner.Children.Add(syncBtn);
-
             syncCard.Child = syncInner;
             p.Children.Add(syncCard);
-
-            AddHintBox(p,
-                "Автоматично запускається при кожному старті стріму — підтягує три списки з GitHub:\n" +
-                "• Кириличні символи (BlokRussian) → Hello_russianLetters\n" +
-                "• Ігнор-слова (IgnorSlova) → Hello_ignoreWords\n" +
-                "• Ігнор-символи (ignorSymvol) → Hello_ignoreSymbols\n" +
-                "Ці списки одразу застосовуються у фільтрах чату. Кнопка вище — для ручної синхронізації без перезапуску стріму.");
+            AddHintBox(p, "Автоматично запускається при кожному старті стріму — підтягує три списки з GitHub:\n" + "• Кириличні символи (BlokRussian) → Hello_russianLetters\n" + "• Ігнор-слова (IgnorSlova) → Hello_ignoreWords\n" + "• Ігнор-символи (ignorSymvol) → Hello_ignoreSymbols\n" + "Ці списки одразу застосовуються у фільтрах чату. Кнопка вище — для ручної синхронізації без перезапуску стріму.");
         }
 
         AddSectionTitle(p, "❤", "Про скрипт");
         var card = new Border
         {
-            Background      = new LinearGradientBrush(Color.FromArgb(40, 150, 70, 255), Color.FromArgb(18, 70, 150, 255), 90),
-            BorderBrush     = new SolidColorBrush(Color.FromArgb(55, 180, 100, 255)),
+            Background = new LinearGradientBrush(Color.FromArgb(40, 150, 70, 255), Color.FromArgb(18, 70, 150, 255), 90),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(55, 180, 100, 255)),
             BorderThickness = new Thickness(1),
-            CornerRadius    = new CornerRadius(12),
-            Padding         = new Thickness(30, 24, 30, 24),
-            Margin          = new Thickness(0, 0, 0, 24)
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(30, 24, 30, 24),
+            Margin = new Thickness(0, 0, 0, 24)
         };
         var inner = new StackPanel();
-        inner.Children.Add(new TextBlock
+        inner.Children.Add(new TextBlock { Text = "Hello — Привітання", FontSize = 18, FontWeight = FontWeights.Bold, Foreground = new LinearGradientBrush(Color.FromRgb(255, 160, 220), Color.FromRgb(160, 210, 255), 45), TextAlignment = TextAlignment.Center, Margin = new Thickness(0, 0, 0, 14) });
+        inner.Children.Add(new TextBlock { Text = "Дякую, що дивитесь мене і користуєтесь моїми скриптами!\n\nВаша підтримка дуже важлива для мене і допомагає продовжувати створювати корисні штуки для спільноти. ❤️", FontSize = 13, Foreground = new SolidColorBrush(Color.FromArgb(210, 220, 210, 255)), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Margin = new Thickness(0, 0, 0, 24) });
+        foreach (var(icon, label, url)in new[]
         {
-            Text          = "Hello — Привітання",
-            FontSize      = 18, FontWeight = FontWeights.Bold,
-            Foreground    = new LinearGradientBrush(Color.FromRgb(255, 160, 220), Color.FromRgb(160, 210, 255), 45),
-            TextAlignment = TextAlignment.Center,
-            Margin        = new Thickness(0, 0, 0, 14)
-        });
-        inner.Children.Add(new TextBlock
-        {
-            Text          = "Дякую, що дивитесь мене і користуєтесь моїми скриптами!\n\nВаша підтримка дуже важлива для мене і допомагає продовжувати створювати корисні штуки для спільноти. ❤️",
-            FontSize      = 13,
-            Foreground    = new SolidColorBrush(Color.FromArgb(210, 220, 210, 255)),
-            TextWrapping  = TextWrapping.Wrap,
-            TextAlignment = TextAlignment.Center,
-            Margin        = new Thickness(0, 0, 0, 24)
-        });
+            ("🔴", "Twitch — sun69wukong", "https://www.twitch.tv/sun69wukong"),
+            ("💳", "Monobank (донат)", "https://send.monobank.ua/jar/9Bqrs6GN1V"),
+            ("🎁", "Donatello", "https://donatello.to/sun69wukong"),
+        }
 
-        foreach (var (icon, label, url) in new[]
-        {
-            ("🔴", "Twitch — sun69wukong",  "https://www.twitch.tv/sun69wukong"),
-            ("💳", "Monobank (донат)",       "https://send.monobank.ua/jar/9Bqrs6GN1V"),
-            ("🎁", "Donatello",              "https://donatello.to/sun69wukong"),
-        })
+        )
         {
             var lb = new Border
             {
-                Background      = new SolidColorBrush(Color.FromArgb(28, 255, 255, 255)),
-                BorderBrush     = new SolidColorBrush(Color.FromArgb(35, 255, 255, 255)),
+                Background = new SolidColorBrush(Color.FromArgb(28, 255, 255, 255)),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(35, 255, 255, 255)),
                 BorderThickness = new Thickness(1),
-                CornerRadius    = new CornerRadius(9),
-                Padding         = new Thickness(16, 10, 16, 10),
-                Margin          = new Thickness(0, 0, 0, 8)
+                CornerRadius = new CornerRadius(9),
+                Padding = new Thickness(16, 10, 16, 10),
+                Margin = new Thickness(0, 0, 0, 8)
             };
-            var lr = new StackPanel { Orientation = Orientation.Horizontal };
+            var lr = new StackPanel
+            {
+                Orientation = Orientation.Horizontal
+            };
             lr.Children.Add(new TextBlock { Text = icon, FontSize = 16, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center });
-
             var hl = new Hyperlink(new Run(label))
             {
                 NavigateUri = new Uri(url),
-                Foreground  = new SolidColorBrush(Color.FromRgb(130, 200, 255))
+                Foreground = new SolidColorBrush(Color.FromRgb(130, 200, 255))
             };
             hl.RequestNavigate += (s, e) =>
             {
@@ -2862,17 +3050,30 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
                 {
                     CPH.LogWarn($"[HELLO GUI] Не вдалось відкрити посилання: {ex.Message}");
                 }
+
                 e.Handled = true;
             };
-            hl.MouseEnter += (s, e) => { hl.Foreground = Brushes.Cyan; hl.TextDecorations = TextDecorations.Underline; };
-            hl.MouseLeave += (s, e) => { hl.Foreground = new SolidColorBrush(Color.FromRgb(130, 200, 255)); hl.TextDecorations = null; };
-
-            var lt = new TextBlock { FontSize = 13, VerticalAlignment = VerticalAlignment.Center };
+            hl.MouseEnter += (s, e) =>
+            {
+                hl.Foreground = Brushes.Cyan;
+                hl.TextDecorations = TextDecorations.Underline;
+            };
+            hl.MouseLeave += (s, e) =>
+            {
+                hl.Foreground = new SolidColorBrush(Color.FromRgb(130, 200, 255));
+                hl.TextDecorations = null;
+            };
+            var lt = new TextBlock
+            {
+                FontSize = 13,
+                VerticalAlignment = VerticalAlignment.Center
+            };
             lt.Inlines.Add(hl);
             lr.Children.Add(lt);
             lb.Child = lr;
             inner.Children.Add(lb);
         }
+
         card.Child = inner;
         p.Children.Add(card);
     }
@@ -2892,30 +3093,34 @@ AddLF(p, "Дозволені домени — виняток (|)", "Hello_allowe
         }
     }
 
-private static readonly HashSet<string> GitHubManagedTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-{
-    "Hello_ignoreWords", "Hello_ignoreSymbols", "Hello_russianLetters"
-};
-
-private void SaveTextBoxesInGrid(DependencyObject parent)
-{
-    if (parent == null) return;
-    int n = VisualTreeHelper.GetChildrenCount(parent);
-    for (int i = 0; i < n; i++)
+    private static readonly HashSet<string> GitHubManagedTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        var child = VisualTreeHelper.GetChild(parent, i);
-        if (child is TextBox tb && tb.Tag is string tag && !string.IsNullOrEmpty(tag))
+        "Hello_ignoreWords",
+        "Hello_ignoreSymbols",
+        "Hello_russianLetters",
+        "Hello_excludedBots"
+    };
+    private void SaveTextBoxesInGrid(DependencyObject parent)
+    {
+        if (parent == null)
+            return;
+        int n = VisualTreeHelper.GetChildrenCount(parent);
+        for (int i = 0; i < n; i++)
         {
-            if (GitHubManagedTags.Contains(tag)) continue; 
-
-            string val = tb.Text?.Trim() ?? "";
-            if (val == tag) val = "";
-            CPH.SetGlobalVar(tag, val, true);
-        }
-        else
-        {
-            SaveTextBoxesInGrid(child);
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is TextBox tb && tb.Tag is string tag && !string.IsNullOrEmpty(tag))
+            {
+                if (GitHubManagedTags.Contains(tag))
+                    continue;
+                string val = tb.Text?.Trim() ?? "";
+                if (val == tag)
+                    val = "";
+                CPH.SetGlobalVar(tag, val, true);
+            }
+            else
+            {
+                SaveTextBoxesInGrid(child);
+            }
         }
     }
-}
 }

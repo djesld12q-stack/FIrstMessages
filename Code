@@ -40,9 +40,7 @@ public class CPHInline
     private static readonly Color TextMuted = Color.FromArgb(170, 185, 160, 255);
     private static readonly Color BorderNormal = Color.FromArgb(70, 140, 70, 220);
     private static readonly Color BorderFocus = Color.FromArgb(220, 160, 90, 255);
-    // =====================================================================
-    //  ВИЗНАЧЕННЯ ТИПУ ПОДІЇ (stream start / stop)
-    // =====================================================================
+   
     private bool IsStreamStartEvent()
     {
         string[] keys =
@@ -128,9 +126,6 @@ public class CPHInline
         }
     }
 
-    // =====================================================================
-    //  ОЧИЩЕННЯ СПИСКІВ
-    // =====================================================================
     private void ClearHelloLists(string reason)
     {
         try
@@ -293,7 +288,7 @@ public class CPHInline
     private const string OldCodeUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/OldCode.C%23";
     private const string OldVersionUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/oldversion";
     private const string UpdateDownloadPath = @"";
-    private const string CurrentVersion = "1.1.1";
+    private const string CurrentVersion = "1.1.4";
     // ── Джерела фільтр-списків на GitHub (авто-синхронізація) ──
     private const string BlokRussianUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/BlokRussian";
     private const string IgnorSlovaUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/IgnorSlova";
@@ -383,7 +378,7 @@ public class CPHInline
         }
     }
 
-    // ── НОВЕ: перевірка версії старого (rollback) коду з файлу "oldversion" на GitHub ──
+  
     private bool CheckOldVersion()
     {
         try
@@ -514,7 +509,7 @@ public class CPHInline
         return false;
     }
 
-    private bool SyncRemoteList(string url, string globalVarKey, string logLabel)
+    private bool SyncRemoteList(string url, string globalVarKey, string logLabel, bool force = false)
     {
         try
         {
@@ -536,11 +531,11 @@ public class CPHInline
             {
             }
 
-            if (!string.Equals(current.Trim(), cleaned, StringComparison.Ordinal))
+            if (force || !string.Equals(current.Trim(), cleaned, StringComparison.Ordinal))
             {
                 CPH.SetGlobalVar(globalVarKey, cleaned, true);
-                LogToFile($"[SYNC {logLabel}] ✅ Оновлено ({cleaned.Length} символів)");
-                CPH.SetGlobalVar($"Hello_filterSync_{logLabel}", "Оновлено", true);
+                LogToFile($"[SYNC {logLabel}] ✅ {(force ? "Примусово перезаписано" : "Оновлено")} ({cleaned.Length} символів)");
+                CPH.SetGlobalVar($"Hello_filterSync_{logLabel}", force ? "Перезавантажено (force)" : "Оновлено", true);
             }
             else
             {
@@ -559,7 +554,8 @@ public class CPHInline
         }
     }
 
-    private bool SyncRemoteListMerge(string url, string globalVarKey, string logLabel)
+    private static readonly object filterListLock = new object ();
+    private bool SyncRemoteListMerge(string url, string globalVarKey, string logLabel, bool force = false)
     {
         try
         {
@@ -572,6 +568,15 @@ public class CPHInline
             }
 
             var remoteItems = remote.Replace("\r\n", "\n").Replace("\r", "\n").Split(new[] { '\n', '|' }, StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
+            if (force)
+            {
+                string forcedStr = remoteItems.Count == 0 ? "" : string.Join("|", remoteItems);
+                CPH.SetGlobalVar(globalVarKey, forcedStr, true);
+                LogToFile($"[SYNC {logLabel}] ✅ Примусово перезаписано з GitHub ({remoteItems.Count} записів)");
+                CPH.SetGlobalVar($"Hello_filterSync_{logLabel}", "Перезавантажено (force)", true);
+                return true;
+            }
+
             string current = "";
             try
             {
@@ -617,15 +622,15 @@ public class CPHInline
         }
     }
 
-    private void SyncAllFilterLists()
+    private void SyncAllFilterLists(bool force = false)
     {
-        LogToFile("[SYNC] 🔄 Синхронізація фільтр-списків з GitHub...");
-        bool okRu = SyncRemoteList(BlokRussianUrl, "Hello_russianLetters", "RussianLetters");
-        bool okIw = SyncRemoteList(IgnorSlovaUrl, "Hello_ignoreWords", "IgnoreWords");
-        bool okIs = SyncRemoteList(IgnorSymvolUrl, "Hello_ignoreSymbols", "IgnoreSymbols");
-        bool okBd = SyncRemoteListMerge(ZablokovaniDomenUrl, "Hello_ignoreDomains", "BlockedDomains");
-        bool okAd = SyncRemoteListMerge(DozvilDomenUrl, "Hello_allowedDomains", "AllowedDomains");
-        bool okBt = SyncRemoteListMerge(Hello_excludedBots, "Hello_excludedBots", "Boty");
+        LogToFile($"[SYNC] 🔄 Синхронізація фільтр-списків з GitHub... (force={force})");
+        bool okRu = SyncRemoteList(BlokRussianUrl, "Hello_russianLetters", "RussianLetters", force);
+        bool okIw = SyncRemoteList(IgnorSlovaUrl, "Hello_ignoreWords", "IgnoreWords", force);
+        bool okIs = SyncRemoteList(IgnorSymvolUrl, "Hello_ignoreSymbols", "IgnoreSymbols", force);
+        bool okBd = SyncRemoteListMerge(ZablokovaniDomenUrl, "Hello_ignoreDomains", "BlockedDomains", force);
+        bool okAd = SyncRemoteListMerge(DozvilDomenUrl, "Hello_allowedDomains", "AllowedDomains", force);
+        bool okBt = SyncRemoteListMerge(Hello_excludedBots, "Hello_excludedBots", "Boty", force);
         CPH.SetGlobalVar("Hello_lastFilterSyncTime", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), true);
         bool allOk = okRu && okIw && okIs && okBd && okAd && okBt;
         CPH.SetGlobalVar("Hello_filterSyncStatus", allOk ? "Синхронізовано успішно" : "Синхронізовано з помилками", true);
@@ -689,13 +694,6 @@ public class CPHInline
             string key = user.ToLowerInvariant();
             string source = GetArg("__source") ?? "невідомо";
             LogToFile($"[EXECUTE START] {user} | greetedList: '{CPH.GetGlobalVar<string>("Hello_greetedList", true) ?? "null"}'");
-            // ── ВАЖЛИВО: streamJustStarted більше не скипає глядача повністю ──
-            // Раніше при одночасному напливі глядачів одразу після старту стріму
-            // цей прапорець міг призвести до того, що частину людей "з'їдало" —
-            // вони писали саме в ту мілісекунду, коли йшло очищення списків,
-            // і функція виходила з return true ДО того, як людину додавали в чергу.
-            // Тепер прапорець лише гарантує одноразове очищення списків при старті,
-            // а сам глядач ЗАВЖДИ йде далі по коду і потрапляє в чергу.
             if (streamJustStarted)
             {
                 lock (queueLock)
@@ -710,7 +708,6 @@ public class CPHInline
                         LogToFile("[STREAM FLAG] Очищення виконано один раз, прапорець знято");
                     }
                 }
-            // НЕ повертаємо true тут — глядач іде далі й буде привітаний нижче.
             }
 
             string triggerId = GetArg("triggerId");
@@ -750,13 +747,9 @@ public class CPHInline
             string firstRaw = (GetArg("firstMessage") ?? GetArg("isFirstMessage") ?? GetArg("first_message") ?? "false").Trim().ToLowerInvariant();
             bool isFirstMessage = firstRaw == "true" || firstRaw == "1" || source.IndexOf("first", StringComparison.OrdinalIgnoreCase) >= 0 || source.IndexOf("words", StringComparison.OrdinalIgnoreCase) >= 0;
             bool isRaid = !string.IsNullOrEmpty(GetArg("viewers")) || source.IndexOf("raid", StringComparison.OrdinalIgnoreCase) >= 0;
-            bool isTestMode = (GetArg("__test") ?? "").Equals("true", StringComparison.OrdinalIgnoreCase);
-            // ── Атомарна перевірка "вже привітаний" + резервування місця ──
-            // Раніше перевірка greeted.Contains(key) і подальший greeted.Add(key)
-            // були рознесені по коду з обробкою повідомлення між ними.
-            // При двох майже одночасних викликах Execute() для РІЗНИХ людей це не
-            // проблема (кожен свій key), але для стабільності й наочності весь
-            // блок "перевір і зарезервуй" тепер один атомарний lock.
+            // ── ФІКС: тестовий режим тепер розпізнається за кількома можливими іменами аргументу
+            // (Streamer.bot може передавати "isTest", "__test" або "test" залежно від тригера) ──
+            bool isTestMode = IsTruthyArg("__test") || IsTruthyArg("isTest") || IsTruthyArg("test");
             bool alreadyGreetedOrQueued;
             lock (queueLock)
             {
@@ -765,15 +758,17 @@ public class CPHInline
                 alreadyGreetedOrQueued = greetedNow.Contains(key) || pendingNow.Any(p => p.Equals(key, StringComparison.OrdinalIgnoreCase));
             }
 
-            if (alreadyGreetedOrQueued)
+            // ── ФІКС: у тестовому режимі не блокуємо повторний тест тим самим ніком,
+            // інакше другий і наступні запуски тесту для того ж юзера просто ігноруються ──
+            if (alreadyGreetedOrQueued && !isTestMode)
             {
                 LogToFile($"[SKIP] {user} | Вже привітаний або вже в черзі");
                 return true;
             }
 
             string message = (GetArg("message") ?? GetArg("input") ?? GetArg("rawInput") ?? GetArg("rewardInput") ?? "").Trim();
-            LogToFile($"[MESSAGE] {user} | message='{message}' | isReward={isReward} | isFirstMessage={isFirstMessage} | isRaid={isRaid}");
-            if (message.Length > 0)
+            LogToFile($"[MESSAGE] {user} | message='{message}' | isReward={isReward} | isFirstMessage={isFirstMessage} | isRaid={isRaid} | isTestMode={isTestMode}");
+            if (message.Length > 0 && !isTestMode)
             {
                 if (ContainsIgnoreWord(message))
                 {
@@ -807,15 +802,19 @@ public class CPHInline
                 return true;
             }
 
-            LogToFile($"[GREET] {user} | {(isReward ? "Нагорода" : isFirstMessage ? "Перше повідомлення" : isRaid ? "Рейд" : "Тест")}");
+            LogToFile($"[GREET] {user} | {(isTestMode ? "Тест" : isReward ? "Нагорода" : isFirstMessage ? "Перше повідомлення" : isRaid ? "Рейд" : "Тест")}");
             string viewers = isRaid ? (GetArg("viewers") ?? "багатьох") : null;
             bool onlyMediaMode = IsOnlyMedia(key);
             bool noSoundMode = !onlyMediaMode && IsIgnoredMedia(key);
             bool sendText = !onlyMediaMode;
             string greetingText = sendText ? GetGreetingText(user, viewers, isRaid) : null;
             bool playSound = onlyMediaMode || !noSoundMode;
+            // ── ФІКС: пошук персонального звуку по ключу користувача — GetUserSound вже
+            // нормалізує та тримить нік, тож саме тут персональний звук отримується
+            // ПЕРЕД дефолтним і передається як пріоритетний в PlayMedia нижче ──
             string userSoundPath = GetUserSound(key);
-            LogToFile($"[USER SOUND] {user} | path='{userSoundPath ?? "default"}'");
+            bool hasPersonalSound = !string.IsNullOrEmpty(userSoundPath) && File.Exists(userSoundPath);
+            LogToFile($"[USER SOUND] {user} | key='{key}' | персональний знайдено={hasPersonalSound} | path='{(hasPersonalSound ? userSoundPath : "немає — буде дефолтний / у тесті без дефолтного")}'");
             string profileImageUrl = GetArg("targetUserProfileImageUrl") ?? GetArg("userProfileImageUrl") ?? GetArg("profileImageUrl") ?? GetArg("profile_image_url");
             LogToFile($"[PROFILE URL] {user} | url='{profileImageUrl ?? "null"}'");
             string capturedUser = user;
@@ -823,12 +822,9 @@ public class CPHInline
             string capturedProfileUrl = profileImageUrl;
             string capturedKey = key;
             string capturedSoundPath = userSoundPath;
+            bool capturedIsTestMode = isTestMode;
             Action mediaAction = () =>
             {
-                // Позначаємо як привітаного ПЕРЕД відтворенням, щоб дублікат-подія
-                // (наприклад друге "перше повідомлення" від того ж юзера, що встигло
-                // прийти поки цей екшн ще чекав у черзі) не могла проскочити повз
-                // перевірку GetGreetedSet вище, поки цей запис ще не збережений.
                 lock (queueLock)
                 {
                     var greetedSet = GetGreetedSet();
@@ -851,7 +847,11 @@ public class CPHInline
 
                 try
                 {
-                    PlayMedia(capturedUser, capturedPlaySound, capturedProfileUrl, capturedSoundPath);
+                    // ── ФІКС: capturedSoundPath (персональний, якщо знайдений) передається
+                    // як userSoundOverride — PlayMedia сам віддасть йому пріоритет над дефолтним.
+                    // capturedIsTestMode передається окремо, щоб у тестовому режимі PlayMedia
+                    // НЕ підставляв дефолтний звук, коли персонального немає ──
+                    PlayMedia(capturedUser, capturedPlaySound, capturedProfileUrl, capturedSoundPath, capturedIsTestMode);
                     LogToFile($"[MEDIA] {capturedUser} | Відтворено");
                 }
                 catch (Exception ex)
@@ -859,7 +859,9 @@ public class CPHInline
                     LogToFile($"[MEDIA ERROR] {capturedUser} | {ex.Message}");
                 }
 
-                int delaySec = GetIntSetting("queueDelaySec");
+                // ── ФІКС: у тестовому режимі не чекаємо queueDelaySec — тест має відпрацювати
+                // одразу, а не тримати чергу заблокованою на весь налаштований делей ──
+                int delaySec = capturedIsTestMode ? 0 : GetIntSetting("queueDelaySec");
                 if (delaySec > 0)
                     CPH.Wait(delaySec * 1000);
                 lock (queueLock)
@@ -871,12 +873,6 @@ public class CPHInline
 
                 LogToFile($"[QUEUE DONE] {capturedUser} | Видалено з pendingQueue, привітання завершено");
             };
-            // ── СУВОРА FIFO-ЧЕРГА: жодного "пріоритетного" перевставляння наперед. ──
-            // Порядок додавання в pendingQueue/greetQueue = порядок реального виклику
-            // Execute() для кожного глядача, а lock серіалізує доступ, тому навіть
-            // при 20 одночасних заходах ніхто не губиться і порядок не ламається:
-            // хто раніше написав повідомлення (раніше прийшов виклик від Streamer.bot),
-            // той раніше і потрапляє в чергу, і раніше отримає привітання.
             lock (queueLock)
             {
                 var pending = GetPendingQueue();
@@ -886,6 +882,13 @@ public class CPHInline
                     greetQueue.Enqueue(mediaAction);
                     SavePendingQueue(pending);
                     LogToFile($"[QUEUE] {user} | Додано у чергу (позиція {pending.Count} з {pending.Count})");
+                }
+                else if (isTestMode)
+                {
+                    // ── ФІКС: у тесті дублікат у pendingQueue не блокує повторний запуск —
+                    // просто додаємо ще одну дію в чергу без запису ще одного ключа ──
+                    greetQueue.Enqueue(mediaAction);
+                    LogToFile($"[QUEUE] {user} | Тестовий запуск додано в чергу поза pendingQueue-дедублікацією");
                 }
                 else
                 {
@@ -945,9 +948,6 @@ public class CPHInline
             }
         }
 
-        // ── Захисна перевірка: якщо після виходу з циклу в чергу щось встигло
-        // додатись (рідкісна гонка), запускаємо обробку ще раз, щоб нікого не
-        // залишити висіти в pendingQueue назавжди.
         bool needsRestart = false;
         lock (queueLock)
         {
@@ -976,12 +976,17 @@ public class CPHInline
         CPH.SetGlobalVar("Hello_pendingQueue", str, true);
     }
 
+    // ── ФІКС: тепер шукає персональний звук за нормалізованим ключем (Trim + ToLowerInvariant)
+    // з обох боків порівняння, щоб зайві пробіли або регістр не ламали збіг ──
     private string GetUserSound(string userKey)
     {
         try
         {
             string raw = GetSetting("userSounds");
             if (string.IsNullOrWhiteSpace(raw) || raw == ClearedMarker)
+                return null;
+            string normalizedKey = (userKey ?? "").Trim().ToLowerInvariant();
+            if (string.IsNullOrEmpty(normalizedKey))
                 return null;
             var lines = raw.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (var line in lines)
@@ -991,8 +996,16 @@ public class CPHInline
                     continue;
                 string nick = line.Substring(0, sep).Trim().ToLowerInvariant();
                 string path = line.Substring(sep + 1).Trim();
-                if (nick == userKey && !string.IsNullOrEmpty(path))
+                if (nick == normalizedKey && !string.IsNullOrEmpty(path))
+                {
+                    if (!File.Exists(path))
+                    {
+                        LogToFile($"[USER SOUND] {userKey} | Знайдено запис '{nick}', але файл не існує: '{path}' — буде дефолтний звук");
+                        return null;
+                    }
+
                     return path;
+                }
             }
         }
         catch (Exception ex)
@@ -1013,70 +1026,128 @@ public class CPHInline
         return text;
     }
 
-    private void PlayMedia(string userName, bool playSound = true, string profileImageUrl = null, string userSoundOverride = null)
+private int GetAudioDurationMs(string path)
+{
+    try
     {
-        var gifs = Split(GetSetting("gifUrls"));
-        string soundPath = (!string.IsNullOrEmpty(userSoundOverride) && File.Exists(userSoundOverride)) ? userSoundOverride : GetSetting("soundPath");
-        int gifDuration = GetIntSetting("gifDuration");
-        int soundDelay = GetIntSetting("soundDelayMs");
-        int profileDuration = GetIntSetting("profileDuration");
-        string scene = GetSetting("obsScene");
-        string gifSource = GetSetting("obsSource");
-        string profileSource = GetSetting("obsSourceProfile");
-        string textSource = GetSetting("obsTextSource");
-        string textTemplate = GetSetting("textTemplate");
-        float volume = GetFloatSetting("soundVolume");
-        bool hasGif = gifs.Count > 0 && !string.IsNullOrWhiteSpace(scene) && !string.IsNullOrWhiteSpace(gifSource) && gifDuration > 0;
-        bool hasProfile = !string.IsNullOrWhiteSpace(profileImageUrl) && !string.IsNullOrWhiteSpace(scene) && !string.IsNullOrWhiteSpace(profileSource);
-        bool hasText = !string.IsNullOrWhiteSpace(scene) && !string.IsNullOrWhiteSpace(textSource) && !string.IsNullOrWhiteSpace(textTemplate) && !string.IsNullOrWhiteSpace(userName);
-        bool hasSound = playSound && !string.IsNullOrEmpty(soundPath) && File.Exists(soundPath);
-        int animDuration = gifDuration;
-        if (!hasGif && (hasProfile || hasText))
-            animDuration = profileDuration > 0 ? profileDuration : 5000;
-        else if (hasProfile && profileDuration > 0)
-            animDuration = Math.Max(gifDuration, profileDuration);
-        if (hasProfile)
-        {
-            CPH.ObsSetBrowserSource(scene, profileSource, profileImageUrl);
-            CPH.ObsShowSource(scene, profileSource);
-        }
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return 0;
 
-        if (hasGif)
+        var player = new System.Windows.Media.MediaPlayer();
         {
-            string gif = PickRandom(gifs);
-            CPH.ObsSetBrowserSource(scene, gifSource, gif);
-            CPH.ObsShowSource(scene, gifSource);
-        }
+            var tcs = new System.Threading.ManualResetEventSlim(false);
+            int durationMs = 0;
 
-        if (hasText)
-        {
-            string finalText = textTemplate.Replace("%userName%", userName);
-            CPH.ObsSetGdiText(scene, textSource, finalText);
-            CPH.ObsShowSource(scene, textSource);
-        }
+            player.MediaOpened += (s, e) =>
+            {
+                if (player.NaturalDuration.HasTimeSpan)
+                    durationMs = (int)player.NaturalDuration.TimeSpan.TotalMilliseconds;
+                tcs.Set();
+            };
+            player.MediaFailed += (s, e) => tcs.Set();
 
-        if (hasGif || hasProfile || hasText || hasSound)
-        {
-            if (soundDelay > 0)
-                CPH.Wait(soundDelay);
-            if (hasSound)
-                CPH.PlaySound(soundPath, volume);
-            int remaining = animDuration - Math.Max(0, soundDelay);
-            if (remaining > 0)
-                CPH.Wait(remaining);
-        }
-        else if (hasSound)
-        {
-            CPH.PlaySound(soundPath, volume);
-        }
+            player.Open(new Uri(path, UriKind.Absolute));
+            tcs.Wait(TimeSpan.FromSeconds(3));
+            player.Close();
 
-        if (hasGif)
-            CPH.ObsHideSource(scene, gifSource);
-        if (hasProfile)
-            CPH.ObsHideSource(scene, profileSource);
-        if (hasText)
-            CPH.ObsHideSource(scene, textSource);
+            return durationMs;
+        }
     }
+    catch (Exception ex)
+    {
+        LogToFile($"[AUDIO DURATION ERROR] {path} | {ex.Message}");
+        return 0;
+    }
+}
+
+   // ── ФІКС: доданий параметр isTestMode. У тестовому режимі, якщо для користувача
+   // немає персонального звуку (userSoundOverride), дефолтний звук (Hello_soundPath)
+   // НЕ підставляється — тест грає лише персональний звук або взагалі без звуку. ──
+   private void PlayMedia(string userName, bool playSound = true, string profileImageUrl = null, string userSoundOverride = null, bool isTestMode = false)
+{
+    var gifs = Split(GetSetting("gifUrls"));
+
+    // ── ФІКС: персональний звук (userSoundOverride) МАЄ пріоритет над дефолтним Hello_soundPath.
+    // Умова перевіряє існування файлу ще раз про всяк випадок (файл міг зникнути з диска
+    // між моментом виклику GetUserSound і моментом фактичного відтворення).
+    // У тестовому режимі, якщо персонального звуку немає — дефолтний НЕ береться. ──
+    bool usingPersonalSound = !string.IsNullOrEmpty(userSoundOverride) && File.Exists(userSoundOverride);
+    string soundPath = usingPersonalSound
+        ? userSoundOverride
+        : (isTestMode ? null : GetSetting("soundPath"));
+    string soundLogLabel = usingPersonalSound
+        ? "ПЕРСОНАЛЬНИЙ"
+        : (isTestMode ? "ТЕСТ — персональний не знайдено, дефолтний пропущено" : "дефолтний");
+    LogToFile($"[PLAY MEDIA] {userName} | звук: {soundLogLabel} | path='{soundPath}'");
+
+    int gifDuration = GetIntSetting("gifDuration");
+    int soundDelay = GetIntSetting("soundDelayMs");
+    int profileDuration = GetIntSetting("profileDuration");
+    string scene = GetSetting("obsScene");
+    string gifSource = GetSetting("obsSource");
+    string profileSource = GetSetting("obsSourceProfile");
+    string textSource = GetSetting("obsTextSource");
+    string textTemplate = GetSetting("textTemplate");
+    float volume = GetFloatSetting("soundVolume");
+    bool hasGif = gifs.Count > 0 && !string.IsNullOrWhiteSpace(scene) && !string.IsNullOrWhiteSpace(gifSource) && gifDuration > 0;
+    bool hasProfile = !string.IsNullOrWhiteSpace(profileImageUrl) && !string.IsNullOrWhiteSpace(scene) && !string.IsNullOrWhiteSpace(profileSource);
+    bool hasText = !string.IsNullOrWhiteSpace(scene) && !string.IsNullOrWhiteSpace(textSource) && !string.IsNullOrWhiteSpace(textTemplate) && !string.IsNullOrWhiteSpace(userName);
+    bool hasSound = playSound && !string.IsNullOrEmpty(soundPath) && File.Exists(soundPath);
+
+    // ── ФІКС: реальна тривалість звуку, щоб не обрізати довгі персональні звуки ──
+    int soundDurationMs = hasSound ? GetAudioDurationMs(soundPath) : 0;
+
+    int animDuration = gifDuration;
+    if (!hasGif && (hasProfile || hasText))
+        animDuration = profileDuration > 0 ? profileDuration : 5000;
+    else if (hasProfile && profileDuration > 0)
+        animDuration = Math.Max(gifDuration, profileDuration);
+
+    // ── ФІКС: підлаштовуємо загальну тривалість під довший зі звуку/анімації ──
+    int totalWaitAfterDelay = Math.Max(animDuration, soundDurationMs);
+
+    if (hasProfile)
+    {
+        CPH.ObsSetBrowserSource(scene, profileSource, profileImageUrl);
+        CPH.ObsShowSource(scene, profileSource);
+    }
+
+    if (hasGif)
+    {
+        string gif = PickRandom(gifs);
+        CPH.ObsSetBrowserSource(scene, gifSource, gif);
+        CPH.ObsShowSource(scene, gifSource);
+    }
+
+    if (hasText)
+    {
+        string finalText = textTemplate.Replace("%userName%", userName);
+        CPH.ObsSetGdiText(scene, textSource, finalText);
+        CPH.ObsShowSource(scene, textSource);
+    }
+
+    if (hasGif || hasProfile || hasText || hasSound)
+    {
+        if (soundDelay > 0)
+            CPH.Wait(soundDelay);
+        if (hasSound)
+            CPH.PlaySound(soundPath, volume);
+        int remaining = totalWaitAfterDelay - Math.Max(0, soundDelay);
+        if (remaining > 0)
+            CPH.Wait(remaining);
+    }
+    else if (hasSound)
+    {
+        CPH.Wait(Math.Max(soundDurationMs, 0));
+    }
+
+    if (hasGif)
+        CPH.ObsHideSource(scene, gifSource);
+    if (hasProfile)
+        CPH.ObsHideSource(scene, profileSource);
+    if (hasText)
+        CPH.ObsHideSource(scene, textSource);
+}
 
     private HashSet<string> GetGreetedSet()
     {
@@ -1106,10 +1177,18 @@ public class CPHInline
         return new HashSet<string>(list.Select(s => s.Trim().ToLowerInvariant()).Where(s => !string.IsNullOrEmpty(s)), StringComparer.OrdinalIgnoreCase);
     }
 
-    private bool IsFullyExcluded(string key) => GetIgnoreSet("Hello_excludedBots").Contains(key) || GetIgnoreSet("Hello_excludedBots").Contains(key);
+    private bool IsFullyExcluded(string key) => GetIgnoreSet("Hello_excludedBots").Contains(key);
     private bool IsOnlyMedia(string key) => GetIgnoreSet("onlyMediaUsers").Contains(key);
     private bool IsIgnoredMedia(string key) => GetIgnoreSet("ignoreMediaUsers").Contains(key);
     private string GetArg(string k) => args != null && args.ContainsKey(k) && args[k] != null ? args[k].ToString().Trim() : null;
+    // ── ФІКС: допоміжний метод, який трактує "true"/"1"/"yes" як істину для будь-якого
+    // імені аргументу тесту, яке міг передати Streamer.bot (isTest, __test, test і т.д.) ──
+    private bool IsTruthyArg(string argName)
+    {
+        string v = (GetArg(argName) ?? "").Trim().ToLowerInvariant();
+        return v == "true" || v == "1" || v == "yes";
+    }
+
     private string GetSetting(string key)
     {
         try
@@ -1195,6 +1274,7 @@ public class CPHInline
 
     //                           GUI
     // =====================================================================
+    private Window _settingsWindowRef;
     private void OpenSettingsWindow()
     {
         var thread = new Thread(() =>
@@ -1232,6 +1312,7 @@ public class CPHInline
                 FontFamily = new FontFamily("Segoe UI"),
                 ResizeMode = ResizeMode.CanResize
             };
+            _settingsWindowRef = window;
             try
             {
                 string wStr = GetSetting("windowWidth");
@@ -1486,7 +1567,37 @@ public class CPHInline
         thread.Start();
     }
 
-    // ── GUI хелпери ──
+
+    private void ForceRefreshAllAutoFields(DependencyObject parent)
+    {
+        if (parent == null)
+            return;
+        int n = VisualTreeHelper.GetChildrenCount(parent);
+        for (int i = 0; i < n; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is TextBox tb && tb.Tag is string tag && !string.IsNullOrEmpty(tag) && GitHubManagedTags.Contains(tag))
+            {
+                try
+                {
+                    if (!tb.IsFocused)
+                    {
+                        string latest = CPH.GetGlobalVar<string>(tag, true) ?? "";
+                        if (latest != tb.Text)
+                            tb.Text = latest;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    CPH.LogWarn($"[HELLO GUI] ForceRefresh error ({tag}): {ex.Message}");
+                }
+            }
+
+            ForceRefreshAllAutoFields(child);
+        }
+    }
+
+    
     private TabItem CreateScrollTab(string header, Style scrollStyle, Action<StackPanel> builder)
     {
         var panel = new StackPanel
@@ -1923,13 +2034,11 @@ public class CPHInline
         slider.Value = initialPercent;
     }
 
-    // =====================================================================
-    //  МЕНЕДЖЕР ПЕРСОНАЛЬНИХ ЗВУКІВ
-    // =====================================================================
+ 
     private void BuildUserSoundsManager(StackPanel p)
     {
         AddSectionTitle(p, "🎵", "Персональні звуки", "Окремий звук для конкретного глядача");
-        // ── Зчитування / збереження записів ──
+       
         List<(string nick, string path)> GetEntries()
         {
             string raw = "";
@@ -1958,7 +2067,7 @@ public class CPHInline
             CPH.SetGlobalVar("Hello_userSounds", raw, true);
         }
 
-        // ── ListBox ──
+       
         var listBorder = new Border
         {
             CornerRadius = new CornerRadius(8),
@@ -1987,6 +2096,11 @@ public class CPHInline
 
         RefreshList();
         p.Children.Add(listBorder);
+        // ── ФІКС: кнопку "▶ Тест звуку обраного" прибрано за проханням користувача.
+        // Тестування персонального звуку тепер відбувається через звичайний тестовий
+        // тригер (Custom / First Words у тестовому режимі) — див. PlayMedia/Execute:
+        // якщо для юзера є персональний звук, тест грає саме його; якщо персонального
+        // звуку немає — дефолтний звук у тесті НЕ програється. ──
         // ── Форма додавання ──
         var addCard = new Border
         {
@@ -2173,7 +2287,7 @@ public class CPHInline
         };
         ctrlRow.Children.Add(removeBtn);
         p.Children.Add(ctrlRow);
-        AddHintBox(p, "① Введи нікнейм  ② Натисни 📂 щоб вибрати файл через провідник  ③ Натисни ＋ Додати\n" + "Регістр не важливий. Якщо нікнейм вже є у списку — шлях замінюється.\n" + "Якщо глядача немає у списку — грає дефолтний звук.");
+        AddHintBox(p, "① Введи нікнейм  ② Натисни 📂 щоб вибрати файл через провідник  ③ Натисни ＋ Додати\n" + "Регістр не важливий. Якщо нікнейм вже є у списку — шлях замінюється.\n" + "Якщо глядача немає у списку — грає дефолтний звук (окрім тестового тригера — див. нижче).\n" + "Щоб перевірити персональний звук — запусти тестовий тригер (наприклад «First Words» у тестовому режимі) з ніком цього глядача: якщо для нього є запис у списку — програється саме його звук, а дефолтний у тесті НЕ підставляється.");
     }
 
     // ── Вміст вкладок ──
@@ -2188,7 +2302,7 @@ public class CPHInline
         AddSectionTitle(p, "🖼", "Зображення / Гіфки", "Browser Source у OBS");
         AddLF(p, "URL гіфок (розділені |)", "Hello_gifUrls", multiline: true, height: 100, hint: "Кілька гіфок розділяйте | — буде обрана випадкова");
         AddLF(p, "Тривалість гіфки (мс)", "Hello_gifDuration");
-        AddSectionTitle(p, "🔊", "Звук", "Дефолтний звук — грає якщо немає персонального");
+        AddSectionTitle(p, "🔊", "Звук", "Дефолтний звук — грає якщо немає персонального (і не в тестовому режимі)");
         // ── Sound path + Browse button ──
         AddFieldLabel(p, "ШЛЯХ ДО ЗВУКОВОГО ФАЙЛУ (ДЕФОЛТ)");
         {
@@ -2271,7 +2385,7 @@ public class CPHInline
             p.Children.Add(new Border { Child = _spRow, Margin = new Thickness(0, 0, 0, 4) });
         }
 
-        AddHintBox(p, "Повний шлях до .mp3 або .wav файлу. Грає для всіх, у кого немає власного звуку.");
+        AddHintBox(p, "Повний шлях до .mp3 або .wav файлу. Грає для всіх, у кого немає власного звуку.\nУ тестовому режимі (тестовий тригер) цей дефолтний звук НЕ програється — тест грає лише персональний звук, якщо він призначений глядачу.");
         AddLF(p, "Затримка звуку (мс)", "Hello_soundDelayMs");
         AddVolumeSlider(p);
         // ── ПЕРСОНАЛЬНІ ЗВУКИ — новий менеджер ──
@@ -2290,7 +2404,7 @@ public class CPHInline
     private void BuildFiltersContent(StackPanel p)
     {
         AddSectionTitle(p, "🔒", "Повний ігнор");
-        AddLF(p, "Повний ігнор користувачів (|)", "Hello_excludedBots", multiline: true, height: 80, hint: "Ці користувачі не отримають жодного привітання. Список ботів з GitHub додається сюди автоматично при синхронізації.");
+        AddAutoRefreshLF(p, "Повний ігнор користувачів (|)", "Hello_excludedBots", multiline: true, height: 80, hint: "Ці користувачі не отримають жодного привітання. Список ботів з GitHub додається сюди автоматично при синхронізації. Поле оновлюється автоматично раз на 5 сек.");
         AddSectionTitle(p, "🎬", "Медіа-фільтри");
         AddLF(p, "Тільки медіа — без тексту в чат (|)", "Hello_onlyMediaUsers", multiline: true, height: 80);
         AddLF(p, "Без звуку (|)", "Hello_ignoreMediaUsers", multiline: true, height: 80);
@@ -2506,7 +2620,6 @@ public class CPHInline
             {
             }
 
-            // ── НОВЕ: версія старого (rollback) коду ──
             string oldVersion = "";
             try
             {
@@ -2545,7 +2658,6 @@ public class CPHInline
             verRow.Children.Add(new TextBlock { Text = "Поточна версія: ", FontSize = 12, Foreground = new SolidColorBrush(TextMuted) });
             verRow.Children.Add(new TextBlock { Text = CurrentVersion, FontSize = 12, FontWeight = FontWeights.Bold, Foreground = new SolidColorBrush(TextPrimary) });
             updInner.Children.Add(verRow);
-            // ── НОВЕ: рядок з версією для відкату (rollback) ──
             var oldVerRow = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
@@ -2606,7 +2718,6 @@ public class CPHInline
                             LogToFile($"[UPDATE CHECK BG ERROR] {exBg.Message}");
                         }
 
-                        // ── НОВЕ: разом з перевіркою оновлень оновлюємо і версію rollback ──
                         try
                         {
                             CheckOldVersion();
@@ -2777,8 +2888,6 @@ public class CPHInline
                             LogToFile($"[ROLLBACK DOWNLOAD BG ERROR] {exBg.Message}");
                         }
 
-                        // ── НОВЕ: після завантаження коду для відкату також підтягуємо
-                        // актуальну версію "oldversion", щоб напис у GUI був свіжим ──
                         try
                         {
                             CheckOldVersion();
@@ -2926,7 +3035,7 @@ public class CPHInline
                     {
                         try
                         {
-                            SyncAllFilterLists();
+                            SyncAllFilterLists(force: true);
                         }
                         catch (Exception exBg)
                         {
@@ -2960,6 +3069,19 @@ public class CPHInline
                                     syncStatusText.Text = $"Статус: {newStatus}" + (!string.IsNullOrEmpty(newSync) ? $"  (остання синхронізація: {newSync})" : "");
                                     syncBtn.Content = "✅  Синхронізовано!";
                                     syncBtn.IsEnabled = true;
+
+                                    // ── ФІКС: примусово оновлюємо всі GitHub-керовані поля (включно з
+                                    // Hello_excludedBots на вкладці «Фільтри»), не чекаючи 5-сек таймер ──
+                                    try
+                                    {
+                                        ForceRefreshAllAutoFields(ownerWindow);
+                                    }
+                                    catch (Exception exRefresh)
+                                    {
+                                        CPH.LogWarn($"[HELLO GUI] ForceRefreshAllAutoFields error: {exRefresh.Message}");
+                                        LogToFile($"[SYNC FORCE REFRESH ERROR] {exRefresh.Message}");
+                                    }
+
                                     var timer = new DispatcherTimer
                                     {
                                         Interval = TimeSpan.FromMilliseconds(2000)
@@ -2996,7 +3118,7 @@ public class CPHInline
             syncInner.Children.Add(syncBtn);
             syncCard.Child = syncInner;
             p.Children.Add(syncCard);
-            AddHintBox(p, "Автоматично запускається при кожному старті стріму — підтягує три списки з GitHub:\n" + "• Кириличні символи (BlokRussian) → Hello_russianLetters\n" + "• Ігнор-слова (IgnorSlova) → Hello_ignoreWords\n" + "• Ігнор-символи (ignorSymvol) → Hello_ignoreSymbols\n" + "Ці списки одразу застосовуються у фільтрах чату. Кнопка вище — для ручної синхронізації без перезапуску стріму.");
+            AddHintBox(p, "Автоматично запускається при кожному старті стріму — підтягує списки з GitHub:\n" + "• Кириличні символи (BlokRussian) → Hello_russianLetters\n" + "• Ігнор-слова (IgnorSlova) → Hello_ignoreWords\n" + "• Ігнор-символи (ignorSymvol) → Hello_ignoreSymbols\n" + "• Повний ігнор користувачів / боти (boty) → Hello_excludedBots\n" + "Ці списки одразу застосовуються у фільтрах чату. Кнопка вище — для ручної синхронізації без перезапуску стріму; поля на вкладці «Фільтри» оновлюються одразу після завершення.");
         }
 
         AddSectionTitle(p, "❤", "Про скрипт");
@@ -3093,6 +3215,104 @@ public class CPHInline
         }
     }
 
+    private UIElement MakeAutoRefreshField(string tag, int height = 44, bool multiline = true)
+    {
+        string val = "";
+        try
+        {
+            val = CPH.GetGlobalVar<string>(tag, true) ?? "";
+        }
+        catch
+        {
+        }
+
+        var tb = new TextBox
+        {
+            Tag = tag,
+            Text = val,
+            MinHeight = height,
+            Padding = new Thickness(12, 9, 12, 9),
+            Background = Brushes.Transparent,
+            Foreground = new SolidColorBrush(TextPrimary),
+            CaretBrush = new SolidColorBrush(AccentBlue),
+            BorderThickness = new Thickness(0),
+            FontSize = 13,
+            FontFamily = new FontFamily("Consolas"),
+            TextWrapping = multiline ? TextWrapping.Wrap : TextWrapping.NoWrap,
+            AcceptsReturn = multiline,
+            VerticalScrollBarVisibility = multiline ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Top
+        };
+        var border = new Border
+        {
+            Child = tb,
+            CornerRadius = new CornerRadius(8),
+            Background = new SolidColorBrush(BgInput),
+            BorderBrush = new SolidColorBrush(BorderNormal),
+            BorderThickness = new Thickness(2),
+            Margin = new Thickness(0, 0, 0, 16),
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        bool isFocused = false;
+        tb.GotFocus += (s, e) =>
+        {
+            isFocused = true;
+            border.BorderBrush = new SolidColorBrush(BorderFocus);
+        };
+        tb.LostFocus += (s, e) =>
+        {
+            isFocused = false;
+            border.BorderBrush = new SolidColorBrush(BorderNormal);
+            try
+            {
+                if (tb.Tag is string t && !string.IsNullOrEmpty(t))
+                    CPH.SetGlobalVar(t, tb.Text?.Trim() ?? "", true);
+            }
+            catch (Exception ex)
+            {
+                CPH.LogWarn($"[HELLO GUI] LostFocus save error ({tb.Tag}): {ex.Message}");
+            }
+        };
+        // ── Автооновлення з GlobalVar раз на 5 сек, тільки якщо поле НЕ в фокусі ──
+        var refreshTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(5)
+        };
+        refreshTimer.Tick += (s, e) =>
+        {
+            if (isFocused)
+                return;
+            try
+            {
+                string latest = CPH.GetGlobalVar<string>(tag, true) ?? "";
+                if (latest != tb.Text)
+                {
+                    int caret = tb.CaretIndex;
+                    tb.Text = latest;
+                    tb.CaretIndex = Math.Min(caret, tb.Text.Length);
+                }
+            }
+            catch
+            {
+            }
+        };
+        tb.Unloaded += (s, e) => refreshTimer.Stop();
+        refreshTimer.Start();
+        return border;
+    }
+
+    private void AddAutoRefreshLF(StackPanel p, string label, string tag, bool multiline = true, int height = 80, string hint = "")
+    {
+        AddFieldLabel(p, label.ToUpperInvariant());
+        p.Children.Add(MakeAutoRefreshField(tag, height, multiline));
+        if (!string.IsNullOrEmpty(hint))
+            AddHintBox(p, hint);
+    }
+
+    // ── ФІКС: додано "Hello_excludedBots", щоб кнопка «Зберегти» НЕ затирала
+    // список ботів старим текстом поля після GitHub-синхронізації ──
     private static readonly HashSet<string> GitHubManagedTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "Hello_ignoreWords",

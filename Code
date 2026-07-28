@@ -40,7 +40,7 @@ public class CPHInline
     private static readonly Color TextMuted = Color.FromArgb(170, 185, 160, 255);
     private static readonly Color BorderNormal = Color.FromArgb(70, 140, 70, 220);
     private static readonly Color BorderFocus = Color.FromArgb(220, 160, 90, 255);
-   
+
     private bool IsStreamStartEvent()
     {
         string[] keys =
@@ -288,7 +288,7 @@ public class CPHInline
     private const string OldCodeUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/OldCode.C%23";
     private const string OldVersionUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/oldversion";
     private const string UpdateDownloadPath = @"";
-    private const string CurrentVersion = "1.1.4";
+    private const string CurrentVersion = "1.1.6";
     // ── Джерела фільтр-списків на GitHub (авто-синхронізація) ──
     private const string BlokRussianUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/BlokRussian";
     private const string IgnorSlovaUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/IgnorSlova";
@@ -378,7 +378,7 @@ public class CPHInline
         }
     }
 
-  
+
     private bool CheckOldVersion()
     {
         try
@@ -693,6 +693,27 @@ public class CPHInline
             user = user.Trim();
             string key = user.ToLowerInvariant();
             string source = GetArg("__source") ?? "невідомо";
+
+            // ══════════════════════════════════════════════════════════════
+            // ── ФІКС: ПЕРШОЧЕРГОВА, АБСОЛЮТНА перевірка Hello_excludedBots.
+            // Це найперша змістовна перевірка після встановлення `key` —
+            // вона стоїть ДО GUI-тригера, ДО перевірки на broadcaster'а,
+            // ДО triggerId-роутингу і ДО будь-якого визначення isTestMode/
+            // isReward/isFirstMessage/isRaid. Якщо користувач у списку
+            // Hello_excludedBots — функція завершується тут: 0 тексту в
+            // чат, 0 звуку, 0 гіфки, 0 профільного фото, 0 запису у
+            // greetedList/pendingQueue, 0 будь-якої дії. Повний ігнор.
+            // Тестовий режим (isTestMode) НЕ обходить цю перевірку —
+            // якщо тестуєш нікнейм, який є у Hello_excludedBots, тест теж
+            // нічого не зробить, бо в реальному бою для цього юзера теж
+            // нічого не мало б відбутись. ──
+            // ══════════════════════════════════════════════════════════════
+            if (IsFullyExcluded(key))
+            {
+                LogToFile($"[SKIP] {user} | Hello_excludedBots (повний ігнор — 0 тексту, 0 звуку, 0 медіа)");
+                return true;
+            }
+
             LogToFile($"[EXECUTE START] {user} | greetedList: '{CPH.GetGlobalVar<string>("Hello_greetedList", true) ?? "null"}'");
             if (streamJustStarted)
             {
@@ -734,12 +755,6 @@ public class CPHInline
             if (!string.IsNullOrWhiteSpace(bcLogin) && key.Equals(bcLogin.Trim().ToLowerInvariant()))
             {
                 LogToFile($"[SKIP] {user} | Broadcaster (login)");
-                return true;
-            }
-
-            if (IsFullyExcluded(key))
-            {
-                LogToFile($"[SKIP] {user} | Hello_excludedBots");
                 return true;
             }
 
@@ -825,6 +840,26 @@ public class CPHInline
             bool capturedIsTestMode = isTestMode;
             Action mediaAction = () =>
             {
+                // ── ФІКС: другий, "останній рубіж" захисту прямо в момент виконання дії
+                // з черги. Черга обробляється асинхронно (ProcessQueue у фоновому потоці),
+                // тому список Hello_excludedBots міг оновитись (наприклад через ручну
+                // синхронізацію фільтрів або редагування поля) уже ПІСЛЯ того, як юзера
+                // додали в чергу, але ДО того, як дійшла черга до відтворення. Ця перевірка
+                // гарантує, що навіть у такому випадку — жодного тексту, жодного звуку,
+                // жодного медіа для когось із Hello_excludedBots не буде показано. ──
+                if (IsFullyExcluded(capturedKey))
+                {
+                    LogToFile($"[QUEUE SKIP] {capturedUser} | Hello_excludedBots виявлено на етапі виконання черги — дія скасована (0 тексту, 0 звуку, 0 медіа)");
+                    lock (queueLock)
+                    {
+                        var pendingSkip = GetPendingQueue();
+                        pendingSkip.RemoveAll(pq => pq.Equals(capturedKey, StringComparison.OrdinalIgnoreCase));
+                        SavePendingQueue(pendingSkip);
+                    }
+
+                    return;
+                }
+
                 lock (queueLock)
                 {
                     var greetedSet = GetGreetedSet();
@@ -1187,7 +1222,13 @@ private int GetAudioDurationMs(string path)
         return new HashSet<string>(list.Select(s => s.Trim().ToLowerInvariant()).Where(s => !string.IsNullOrEmpty(s)), StringComparer.OrdinalIgnoreCase);
     }
 
-    private bool IsFullyExcluded(string key) => GetIgnoreSet("Hello_excludedBots").Contains(key);
+    // ── ФІКС: IsFullyExcluded тепер читає Hello_excludedBots напряму «наживо»
+    // (без проміжного кешування набору за межами виклику), тож будь-яка зміна
+    // списку (ручне редагування в GUI, GitHub-синхронізація) відразу враховується
+    // на кожному з трьох рубежів перевірки (на вході в Execute, при постановці
+    // в чергу — опосередковано через ранній return, і в момент виконання дії
+    // з черги в mediaAction). ──
+    private bool IsFullyExcluded(string key) => !string.IsNullOrEmpty(key) && GetIgnoreSet("Hello_excludedBots").Contains(key);
     private bool IsOnlyMedia(string key) => GetIgnoreSet("onlyMediaUsers").Contains(key);
     private bool IsIgnoredMedia(string key) => GetIgnoreSet("ignoreMediaUsers").Contains(key);
     private string GetArg(string k) => args != null && args.ContainsKey(k) && args[k] != null ? args[k].ToString().Trim() : null;
@@ -1607,7 +1648,7 @@ private int GetAudioDurationMs(string path)
         }
     }
 
-    
+
     private TabItem CreateScrollTab(string header, Style scrollStyle, Action<StackPanel> builder)
     {
         var panel = new StackPanel
@@ -2044,11 +2085,11 @@ private int GetAudioDurationMs(string path)
         slider.Value = initialPercent;
     }
 
- 
+
     private void BuildUserSoundsManager(StackPanel p)
     {
         AddSectionTitle(p, "🎵", "Персональні звуки", "Окремий звук для конкретного глядача");
-       
+
         List<(string nick, string path)> GetEntries()
         {
             string raw = "";
@@ -2077,7 +2118,7 @@ private int GetAudioDurationMs(string path)
             CPH.SetGlobalVar("Hello_userSounds", raw, true);
         }
 
-       
+
         var listBorder = new Border
         {
             CornerRadius = new CornerRadius(8),
@@ -2413,8 +2454,8 @@ private int GetAudioDurationMs(string path)
 
     private void BuildFiltersContent(StackPanel p)
     {
-        AddSectionTitle(p, "🔒", "Повний ігнор");
-        AddAutoRefreshLF(p, "Повний ігнор користувачів (|)", "Hello_excludedBots", multiline: true, height: 80, hint: "Ці користувачі не отримають жодного привітання. Список ботів з GitHub додається сюди автоматично при синхронізації. Поле оновлюється автоматично раз на 5 сек.");
+        AddSectionTitle(p, "🔒", "Повний ігнор", "Ці користувачі не отримають ЖОДНОЇ дії — 0 тексту, 0 звуку, 0 гіфки, 0 фото, 0 запису в чергу");
+        AddAutoRefreshLF(p, "Повний ігнор користувачів (|)", "Hello_excludedBots", multiline: true, height: 80, hint: "Ці користувачі не отримають жодного привітання: ні тексту в чат, ні звуку, ні гіфки, ні профільного фото. Перевірка спрацьовує ПЕРШОЮ — раніше за будь-яку іншу логіку (нагороди, перше повідомлення, рейд, навіть тестовий режим). Список ботів з GitHub додається сюди автоматично при синхронізації. Поле оновлюється автоматично раз на 5 сек.");
         AddSectionTitle(p, "🎬", "Медіа-фільтри");
         AddLF(p, "Тільки медіа — без тексту в чат (|)", "Hello_onlyMediaUsers", multiline: true, height: 80);
         AddLF(p, "Без звуку (|)", "Hello_ignoreMediaUsers", multiline: true, height: 80);

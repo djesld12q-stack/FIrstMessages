@@ -2673,7 +2673,7 @@ private int GetAudioDurationMs(string path)
                 Orientation = Orientation.Horizontal,
                 Margin = new Thickness(0, 0, 0, 6)
             };
-            oldVerRow.Children.Add(new TextBlock { Text = "Версія відкату (rollback): ", FontSize = 12, Foreground = new SolidColorBrush(TextMuted) });
+            oldVerRow.Children.Add(new TextBlock { Text = "Версія відкату", FontSize = 12, Foreground = new SolidColorBrush(TextMuted) });
             var oldVerValueText = new TextBlock
             {
                 Text = oldVersion,

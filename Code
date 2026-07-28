@@ -814,7 +814,7 @@ public class CPHInline
             // ПЕРЕД дефолтним і передається як пріоритетний в PlayMedia нижче ──
             string userSoundPath = GetUserSound(key);
             bool hasPersonalSound = !string.IsNullOrEmpty(userSoundPath) && File.Exists(userSoundPath);
-            LogToFile($"[USER SOUND] {user} | key='{key}' | персональний знайдено={hasPersonalSound} | path='{(hasPersonalSound ? userSoundPath : "немає — буде дефолтний / у тесті без дефолтного")}'");
+            LogToFile($"[USER SOUND] {user} | key='{key}' | персональний знайдено={hasPersonalSound} | path='{(hasPersonalSound ? userSoundPath : "немає — буде дефолтний")}'");
             string profileImageUrl = GetArg("targetUserProfileImageUrl") ?? GetArg("userProfileImageUrl") ?? GetArg("profileImageUrl") ?? GetArg("profile_image_url");
             LogToFile($"[PROFILE URL] {user} | url='{profileImageUrl ?? "null"}'");
             string capturedUser = user;
@@ -848,9 +848,10 @@ public class CPHInline
                 try
                 {
                     // ── ФІКС: capturedSoundPath (персональний, якщо знайдений) передається
-                    // як userSoundOverride — PlayMedia сам віддасть йому пріоритет над дефолтним.
-                    // capturedIsTestMode передається окремо, щоб у тестовому режимі PlayMedia
-                    // НЕ підставляв дефолтний звук, коли персонального немає ──
+                    // як userSoundOverride — PlayMedia сам віддасть йому пріоритет над дефолтним,
+                    // незалежно від того тест це чи ні. capturedIsTestMode передається лише
+                    // для логування/іншої тестової поведінки (черга без затримки тощо) —
+                    // вибір звуку від isTestMode більше НЕ залежить ──
                     PlayMedia(capturedUser, capturedPlaySound, capturedProfileUrl, capturedSoundPath, capturedIsTestMode);
                     LogToFile($"[MEDIA] {capturedUser} | Відтворено");
                 }
@@ -1060,9 +1061,16 @@ private int GetAudioDurationMs(string path)
     }
 }
 
-   // ── ФІКС: доданий параметр isTestMode. У тестовому режимі, якщо для користувача
-   // немає персонального звуку (userSoundOverride), дефолтний звук (Hello_soundPath)
-   // НЕ підставляється — тест грає лише персональний звук або взагалі без звуку. ──
+   // ── ФІКС: параметр isTestMode залишено в сигнатурі (використовується лише для логування
+   // нижче), але він БІЛЬШЕ НЕ впливає на вибір звукового файлу. Раніше в тестовому режимі,
+   // якщо для користувача не було персонального звуку, дефолтний звук (Hello_soundPath)
+   // навмисно не підставлявся — через це тест не грав нічого для звичайних (не персональних)
+   // глядачів. Тепер логіка вибору звуку однакова і в тесті, і в бою:
+   //   є персональний звук  → грає персональний
+   //   немає персонального  → грає дефолтний (Hello_soundPath), якщо він заданий
+   // Це стосується лише вибору АУДІОФАЙЛУ. Інша тестова поведінка (наприклад, відсутність
+   // затримки queueDelaySec у черзі) лишається без змін — вона й раніше не мала стосунку
+   // до дефолтного звуку. ──
    private void PlayMedia(string userName, bool playSound = true, string profileImageUrl = null, string userSoundOverride = null, bool isTestMode = false)
 {
     var gifs = Split(GetSetting("gifUrls"));
@@ -1070,14 +1078,16 @@ private int GetAudioDurationMs(string path)
     // ── ФІКС: персональний звук (userSoundOverride) МАЄ пріоритет над дефолтним Hello_soundPath.
     // Умова перевіряє існування файлу ще раз про всяк випадок (файл міг зникнути з диска
     // між моментом виклику GetUserSound і моментом фактичного відтворення).
-    // У тестовому режимі, якщо персонального звуку немає — дефолтний НЕ береться. ──
+    // Дефолтний звук тепер підставляється завжди, коли персонального немає — незалежно від
+    // isTestMode, як і має бути: немає персонального → грає дефолтний, є персональний → грає
+    // персональний, а не дефолтний. ──
     bool usingPersonalSound = !string.IsNullOrEmpty(userSoundOverride) && File.Exists(userSoundOverride);
     string soundPath = usingPersonalSound
         ? userSoundOverride
-        : (isTestMode ? null : GetSetting("soundPath"));
+        : GetSetting("soundPath");
     string soundLogLabel = usingPersonalSound
         ? "ПЕРСОНАЛЬНИЙ"
-        : (isTestMode ? "ТЕСТ — персональний не знайдено, дефолтний пропущено" : "дефолтний");
+        : (isTestMode ? "ТЕСТ — персональний не знайдено, грає дефолтний" : "дефолтний");
     LogToFile($"[PLAY MEDIA] {userName} | звук: {soundLogLabel} | path='{soundPath}'");
 
     int gifDuration = GetIntSetting("gifDuration");
@@ -2100,7 +2110,7 @@ private int GetAudioDurationMs(string path)
         // Тестування персонального звуку тепер відбувається через звичайний тестовий
         // тригер (Custom / First Words у тестовому режимі) — див. PlayMedia/Execute:
         // якщо для юзера є персональний звук, тест грає саме його; якщо персонального
-        // звуку немає — дефолтний звук у тесті НЕ програється. ──
+        // звуку немає — у тесті грає ДЕФОЛТНИЙ звук (так само, як і поза тестом). ──
         // ── Форма додавання ──
         var addCard = new Border
         {
@@ -2287,7 +2297,7 @@ private int GetAudioDurationMs(string path)
         };
         ctrlRow.Children.Add(removeBtn);
         p.Children.Add(ctrlRow);
-        AddHintBox(p, "① Введи нікнейм  ② Натисни 📂 щоб вибрати файл через провідник  ③ Натисни ＋ Додати\n" + "Регістр не важливий. Якщо нікнейм вже є у списку — шлях замінюється.\n" + "Якщо глядача немає у списку — грає дефолтний звук (окрім тестового тригера — див. нижче).\n" + "Щоб перевірити персональний звук — запусти тестовий тригер (наприклад «First Words» у тестовому режимі) з ніком цього глядача: якщо для нього є запис у списку — програється саме його звук, а дефолтний у тесті НЕ підставляється.");
+        AddHintBox(p, "① Введи нікнейм  ② Натисни 📂 щоб вибрати файл через провідник  ③ Натисни ＋ Додати\n" + "Регістр не важливий. Якщо нікнейм вже є у списку — шлях замінюється.\n" + "Якщо глядача немає у списку — грає дефолтний звук (і в бою, і в тесті).\n" + "Щоб перевірити персональний звук — запусти тестовий тригер (наприклад «First Words» у тестовому режимі) з ніком цього глядача: якщо для нього є запис у списку — програється саме його звук, а якщо запису немає — програється дефолтний звук.");
     }
 
     // ── Вміст вкладок ──
@@ -2302,7 +2312,7 @@ private int GetAudioDurationMs(string path)
         AddSectionTitle(p, "🖼", "Зображення / Гіфки", "Browser Source у OBS");
         AddLF(p, "URL гіфок (розділені |)", "Hello_gifUrls", multiline: true, height: 100, hint: "Кілька гіфок розділяйте | — буде обрана випадкова");
         AddLF(p, "Тривалість гіфки (мс)", "Hello_gifDuration");
-        AddSectionTitle(p, "🔊", "Звук", "Дефолтний звук — грає якщо немає персонального (і не в тестовому режимі)");
+        AddSectionTitle(p, "🔊", "Звук", "Дефолтний звук — грає якщо немає персонального (і в бою, і в тесті)");
         // ── Sound path + Browse button ──
         AddFieldLabel(p, "ШЛЯХ ДО ЗВУКОВОГО ФАЙЛУ (ДЕФОЛТ)");
         {
@@ -2385,7 +2395,7 @@ private int GetAudioDurationMs(string path)
             p.Children.Add(new Border { Child = _spRow, Margin = new Thickness(0, 0, 0, 4) });
         }
 
-        AddHintBox(p, "Повний шлях до .mp3 або .wav файлу. Грає для всіх, у кого немає власного звуку.\nУ тестовому режимі (тестовий тригер) цей дефолтний звук НЕ програється — тест грає лише персональний звук, якщо він призначений глядачу.");
+        AddHintBox(p, "Повний шлях до .mp3 або .wav файлу. Грає для всіх, у кого немає власного звуку — так само і в бою, і в тестовому тригері.");
         AddLF(p, "Затримка звуку (мс)", "Hello_soundDelayMs");
         AddVolumeSlider(p);
         // ── ПЕРСОНАЛЬНІ ЗВУКИ — новий менеджер ──

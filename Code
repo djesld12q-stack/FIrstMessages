@@ -40,6 +40,25 @@ public class CPHInline
     private static readonly Color BorderNormal = Color.FromArgb(70, 140, 70, 220);
     private static readonly Color BorderFocus = Color.FromArgb(220, 160, 90, 255);
 
+    // ==== ПОВНИЙ ІГНОР: єдина точка правди ====
+    // Ключ нормалізується (trim + lower) і звіряється з Hello_excludedBots.
+    // Якщо збіг — return true одразу на самому вході Execute(), до БУДЬ-ЯКОЇ іншої логіки.
+    private bool IsFullyExcluded(string key)
+    {
+        if (string.IsNullOrEmpty(key))
+            return false;
+        key = key.Trim().ToLowerInvariant();
+        if (GetIgnoreSet("Hello_excludedBots").Contains(key))
+            return true;
+
+        // Додатково: якщо це власник каналу — теж повний ігнор,
+        // незалежно від того, чи TwitchGetBroadcaster() повернув дані.
+        if (IsBroadcaster(key))
+            return true;
+
+        return false;
+    }
+
     private bool IsBroadcaster(string key)
     {
         if (string.IsNullOrEmpty(key))
@@ -345,7 +364,7 @@ public class CPHInline
     private const string OldCodeUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/OldCode.C%23";
     private const string OldVersionUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/oldversion";
     private const string UpdateDownloadPath = @"";
-    private const string CurrentVersion = "1.1.7";
+    private const string CurrentVersion = "1.1.9";
     private const string BlokRussianUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/BlokRussian";
     private const string IgnorSlovaUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/IgnorSlova";
     private const string IgnorSymvolUrl = "https://raw.githubusercontent.com/djesld12q-stack/FIrstMessages/refs/heads/main/ignorSymvol";
@@ -750,17 +769,12 @@ public class CPHInline
             string key = user.ToLowerInvariant();
             string source = GetArg("__source") ?? "невідомо";
 
-
+            // ==== ПОВНИЙ ІГНОР — перевіряється ПЕРШИМ, до будь-якої іншої логіки ====
+            // 0 тексту в чат, 0 звуку, 0 гіфки, 0 фото, 0 запису в чергу.
+            // Спрацьовує і для ручного списку Hello_excludedBots, і для власника каналу.
             if (IsFullyExcluded(key))
             {
-                LogToFile($"[SKIP] {user} | Hello_excludedBots (повний ігнор — 0 тексту, 0 звуку, 0 медіа)");
-                return true;
-            }
-
-
-            if (IsBroadcaster(key))
-            {
-                LogToFile($"[SKIP] {user} | Broadcaster — повний ігнор (0 тексту, 0 звуку, 0 медіа)");
+                LogToFile($"[SKIP] {user} | Hello_excludedBots / Broadcaster — повний ігнор (0 тексту, 0 звуку, 0 медіа)");
                 return true;
             }
 
@@ -868,9 +882,11 @@ public class CPHInline
             bool capturedIsTestMode = isTestMode;
             Action mediaAction = () =>
             {
+                // Повторна перевірка повного ігнору на етапі виконання черги —
+                // якщо список змінили поки юзер стояв у черзі, дія все одно скасовується.
                 if (IsFullyExcluded(capturedKey))
                 {
-                    LogToFile($"[QUEUE SKIP] {capturedUser} | Hello_excludedBots виявлено на етапі виконання черги — дія скасована (0 тексту, 0 звуку, 0 медіа)");
+                    LogToFile($"[QUEUE SKIP] {capturedUser} | Hello_excludedBots / Broadcaster виявлено на етапі виконання черги — дія скасована (0 тексту, 0 звуку, 0 медіа)");
                     lock (queueLock)
                     {
                         var pendingSkip = GetPendingQueue();
@@ -1214,7 +1230,6 @@ private int GetAudioDurationMs(string path)
         return new HashSet<string>(list.Select(s => s.Trim().ToLowerInvariant()).Where(s => !string.IsNullOrEmpty(s)), StringComparer.OrdinalIgnoreCase);
     }
 
-    private bool IsFullyExcluded(string key) => !string.IsNullOrEmpty(key) && GetIgnoreSet("Hello_excludedBots").Contains(key);
     private bool IsOnlyMedia(string key) => GetIgnoreSet("onlyMediaUsers").Contains(key);
     private bool IsIgnoredMedia(string key) => GetIgnoreSet("ignoreMediaUsers").Contains(key);
     private string GetArg(string k) => args != null && args.ContainsKey(k) && args[k] != null ? args[k].ToString().Trim() : null;

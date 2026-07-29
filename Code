@@ -40,19 +40,16 @@ public class CPHInline
     private static readonly Color BorderNormal = Color.FromArgb(70, 140, 70, 220);
     private static readonly Color BorderFocus = Color.FromArgb(220, 160, 90, 255);
 
-    // ==== ПОВНИЙ ІГНОР: єдина точка правди ====
-    // Ключ нормалізується (trim + lower) і звіряється з Hello_excludedBots.
-    // Якщо збіг — return true одразу на самому вході Execute(), до БУДЬ-ЯКОЇ іншої логіки.
+  
     private bool IsFullyExcluded(string key)
     {
         if (string.IsNullOrEmpty(key))
             return false;
         key = key.Trim().ToLowerInvariant();
-        if (GetIgnoreSet("Hello_excludedBots").Contains(key))
+        if (GetIgnoreSet("excludedBots").Contains(key))
             return true;
 
-        // Додатково: якщо це власник каналу — теж повний ігнор,
-        // незалежно від того, чи TwitchGetBroadcaster() повернув дані.
+
         if (IsBroadcaster(key))
             return true;
 
